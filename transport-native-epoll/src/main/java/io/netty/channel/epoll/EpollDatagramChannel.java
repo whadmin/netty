@@ -17,6 +17,7 @@ package io.netty.channel.epoll;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.CompositeByteBuf;
 import io.netty.channel.AddressedEnvelope;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelMetadata;
@@ -24,6 +25,7 @@ import io.netty.channel.ChannelOutboundBuffer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.DefaultAddressedEnvelope;
+import io.netty.channel.epoll.NativeDatagramPacketArray.NativeDatagramPacket;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.channel.socket.DatagramChannelConfig;
 import io.netty.channel.socket.DatagramPacket;
@@ -307,7 +309,7 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
             try {
                 // Check if sendmmsg(...) is supported which is only the case for GLIBC 2.14+
                 if (Native.IS_SUPPORTING_SENDMMSG && in.size() > 1) {
-                    NativeDatagramPacketArray array = ((EpollEventLoop) eventLoop()).cleanDatagramPacketArray();
+                    NativeDatagramPacketArray array = cleanDatagramPacketArray();
                     in.forEachFlushedMessage(array);
                     int cnt = array.count();
 
@@ -386,7 +388,7 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
             }
         } else if (data.nioBufferCount() > 1) {
             IovArray array = ((EpollEventLoop) eventLoop()).cleanIovArray();
-            array.add(data);
+            array.addReadable(data);
             int cnt = array.count();
             assert cnt != 0;
 
@@ -493,7 +495,6 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                         byteBuf = allocHandle.allocate(allocator);
                         allocHandle.attemptedBytesRead(byteBuf.writableBytes());
 
-                        final DatagramPacket packet;
                         if (connected) {
                             try {
                                 allocHandle.lastBytesRead(doReadBytes(byteBuf));
@@ -512,42 +513,86 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                                 byteBuf = null;
                                 break;
                             }
-                            packet = new DatagramPacket(
+                            DatagramPacket packet = new DatagramPacket(
                                     byteBuf, (InetSocketAddress) localAddress(), (InetSocketAddress) remoteAddress());
-                        } else {
-                            final DatagramSocketAddress remoteAddress;
-                            if (byteBuf.hasMemoryAddress()) {
-                                // has a memory address so use optimized call
-                                remoteAddress = socket.recvFromAddress(byteBuf.memoryAddress(), byteBuf.writerIndex(),
-                                        byteBuf.capacity());
-                            } else {
-                                ByteBuffer nioData = byteBuf.internalNioBuffer(
-                                        byteBuf.writerIndex(), byteBuf.writableBytes());
-                                remoteAddress = socket.recvFrom(nioData, nioData.position(), nioData.limit());
-                            }
+                            allocHandle.incMessagesRead(1);
 
-                            if (remoteAddress == null) {
-                                allocHandle.lastBytesRead(-1);
+                            readPending = false;
+
+                            pipeline.fireChannelRead(packet);
+                            byteBuf = null;
+                        } else {
+                            if (byteBuf instanceof CompositeByteBuf) {
+                                // Try to use gathering writes via recvmmsg(...) syscall.
+                                NativeDatagramPacketArray array = cleanDatagramPacketArray();
+                                CompositeByteBuf compositeByteBuf = (CompositeByteBuf) byteBuf;
+                                int numComponents = compositeByteBuf.numComponents();
+                                for (int i = 0; i < numComponents; i++) {
+                                    if (!array.addWritable(compositeByteBuf.component(i))) {
+                                        // Not enough space...
+                                        break;
+                                    }
+                                }
+
+                                NativeDatagramPacketArray.NativeDatagramPacket[] packets = array.packets();
+                                int received = socket.recvmmsg(packets, 0, array.count());
+                                if (received == 0) {
+                                    allocHandle.lastBytesRead(-1);
+                                    byteBuf.release();
+                                    byteBuf = null;
+                                    break;
+                                }
+                                InetSocketAddress local = (InetSocketAddress) localAddress();
+                                DatagramPacket[] receivedPackets = new DatagramPacket[received];
+                                int bytesRead = 0;
+                                for (int i = 0; i < received; i++) {
+                                    NativeDatagramPacket p = packets[i];
+                                    DatagramPacket dPacket =
+                                            p.newDatagramPacket(compositeByteBuf.component(i).retain(), local);
+                                    bytesRead += dPacket.content().readableBytes();
+                                    receivedPackets[i] = dPacket;
+                                }
+                                allocHandle.lastBytesRead(bytesRead);
+                                allocHandle.incMessagesRead(received);
+                                readPending = false;
+
+                                for (DatagramPacket datagramPacket: receivedPackets) {
+                                    pipeline.fireChannelRead(datagramPacket);
+                                }
+                                byteBuf = null;
+                            } else {
+                                final DatagramSocketAddress remoteAddress;
+                                if (byteBuf.hasMemoryAddress()) {
+                                    // has a memory address so use optimized call
+                                    remoteAddress = socket.recvFromAddress(
+                                            byteBuf.memoryAddress(), byteBuf.writerIndex(), byteBuf.capacity());
+                                } else {
+                                    ByteBuffer nioData = byteBuf.internalNioBuffer(
+                                            byteBuf.writerIndex(), byteBuf.writableBytes());
+                                    remoteAddress = socket.recvFrom(nioData, nioData.position(), nioData.limit());
+                                }
+
+                                if (remoteAddress == null) {
+                                    allocHandle.lastBytesRead(-1);
+                                    byteBuf.release();
+                                    byteBuf = null;
+                                    break;
+                                }
+                                InetSocketAddress localAddress = remoteAddress.localAddress();
+                                if (localAddress == null) {
+                                    localAddress = (InetSocketAddress) localAddress();
+                                }
+                                allocHandle.lastBytesRead(remoteAddress.receivedAmount());
+                                allocHandle.incMessagesRead(1);
+
+                                readPending = false;
+                                pipeline.fireChannelRead(
+                                        new DatagramPacket(byteBuf, localAddress, (InetSocketAddress) remoteAddress()));
                                 byteBuf.release();
                                 byteBuf = null;
-                                break;
                             }
-                            InetSocketAddress localAddress = remoteAddress.localAddress();
-                            if (localAddress == null) {
-                                localAddress = (InetSocketAddress) localAddress();
-                            }
-                            allocHandle.lastBytesRead(remoteAddress.receivedAmount());
-                            byteBuf.writerIndex(byteBuf.writerIndex() + allocHandle.lastBytesRead());
-
-                            packet = new DatagramPacket(byteBuf, localAddress, remoteAddress);
                         }
 
-                        allocHandle.incMessagesRead(1);
-
-                        readPending = false;
-                        pipeline.fireChannelRead(packet);
-
-                        byteBuf = null;
                     } while (allocHandle.continueReading());
                 } catch (Throwable t) {
                     if (byteBuf != null) {
@@ -566,5 +611,9 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                 epollInFinally(config);
             }
         }
+    }
+
+    private NativeDatagramPacketArray cleanDatagramPacketArray() {
+        return ((EpollEventLoop) eventLoop()).cleanDatagramPacketArray();
     }
 }
