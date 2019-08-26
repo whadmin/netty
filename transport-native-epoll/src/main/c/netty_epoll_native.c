@@ -348,18 +348,20 @@ static jint netty_epoll_native_sendmmsg0(JNIEnv* env, jclass clazz, jint fd, jbo
 
 static jint netty_epoll_native_recvmmsg0(JNIEnv* env, jclass clazz, jint fd, jboolean ipv6, jobjectArray packets, jint offset, jint len) {
     struct mmsghdr msg[len];
-    int i;
-
     memset(msg, 0, sizeof(msg));
+    struct sockaddr_storage addr[len];
+    int addrSize = sizeof(addr);
+    memset(addr, 0, addrSize);
+
+    int i;
 
     for (i = 0; i < len; i++) {
         jobject packet = (*env)->GetObjectArrayElement(env, packets, i + offset);
         msg[i].msg_hdr.msg_iov = (struct iovec*) (intptr_t) (*env)->GetLongField(env, packet, packetMemoryAddressFieldId);
         msg[i].msg_hdr.msg_iovlen = (*env)->GetIntField(env, packet, packetCountFieldId);
 
-        struct sockaddr_storage addr;
-        msg[i].msg_hdr.msg_name = (struct sockaddr*) &addr;
-        msg[i].msg_hdr.msg_namelen = (socklen_t) sizeof(addr);
+        msg[i].msg_hdr.msg_name = &(addr[i]);
+        msg[i].msg_hdr.msg_namelen = (socklen_t) addrSize;
     }
 
     ssize_t res;
@@ -523,7 +525,7 @@ static const JNINativeMethod fixed_method_table[] = {
 static const jint fixed_method_table_size = sizeof(fixed_method_table) / sizeof(fixed_method_table[0]);
 
 static jint dynamicMethodsTableSize() {
-    return fixed_method_table_size + 2; // 1 is for the dynamic method signatures.
+    return fixed_method_table_size + 2; // 2 is for the dynamic method signatures.
 }
 
 static JNINativeMethod* createDynamicMethodsTable(const char* packagePrefix) {
