@@ -93,61 +93,39 @@ public final class IovArray implements MessageProcessor {
      * have been added.
      */
     public boolean addReadable(ByteBuf buf) {
-        if (count == IOV_MAX) {
-            // No more room!
-            return false;
-        } else if (buf.nioBufferCount() == 1) {
-            final int len = buf.readableBytes();
-            if (len == 0) {
-                return true;
-            }
-            if (buf.hasMemoryAddress()) {
-                return add(buf.memoryAddress(), buf.readerIndex(), len);
-            } else {
-                ByteBuffer nioBuffer = buf.internalNioBuffer(buf.readerIndex(), len);
-                return add(Buffer.memoryAddress(nioBuffer), nioBuffer.position(), len);
-            }
-        } else {
-            ByteBuffer[] buffers = buf.nioBuffers();
-            for (ByteBuffer nioBuffer : buffers) {
-                final int len = nioBuffer.remaining();
-                if (len != 0 &&
-                    (!add(Buffer.memoryAddress(nioBuffer), nioBuffer.position(), len) || count == IOV_MAX)) {
-                    return false;
-                }
-            }
-            return true;
-        }
+        return add(buf, buf.readerIndex(), buf.readableBytes());
     }
 
     public boolean addWritable(ByteBuf buf) {
+        return add(buf, buf.writerIndex(), buf.writableBytes());
+    }
+
+    private boolean add(ByteBuf buf, int offset, int len) {
         if (count == IOV_MAX) {
             // No more room!
             return false;
         } else if (buf.nioBufferCount() == 1) {
-            final int len = buf.writableBytes();
             if (len == 0) {
                 return true;
             }
             if (buf.hasMemoryAddress()) {
-                return add(buf.memoryAddress(), buf.writerIndex(), len);
+                return add(buf.memoryAddress(), offset, len);
             } else {
-                ByteBuffer nioBuffer = buf.internalNioBuffer(buf.writerIndex(), len);
+                ByteBuffer nioBuffer = buf.internalNioBuffer(offset, len);
                 return add(Buffer.memoryAddress(nioBuffer), nioBuffer.position(), len);
             }
         } else {
-            ByteBuffer[] buffers = buf.nioBuffers(buf.writerIndex(), buf.writableBytes());
+            ByteBuffer[] buffers = buf.nioBuffers(offset, len);
             for (ByteBuffer nioBuffer : buffers) {
-                final int len = nioBuffer.remaining();
-                if (len != 0 &&
-                        (!add(Buffer.memoryAddress(nioBuffer), nioBuffer.position(), len) || count == IOV_MAX)) {
+                final int remaining = nioBuffer.remaining();
+                if (remaining != 0 &&
+                        (!add(Buffer.memoryAddress(nioBuffer), nioBuffer.position(), remaining) || count == IOV_MAX)) {
                     return false;
                 }
             }
             return true;
         }
     }
-
     private boolean add(long addr, int offset, int len) {
         assert addr != 0;
 
