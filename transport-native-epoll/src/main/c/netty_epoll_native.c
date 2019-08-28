@@ -368,7 +368,7 @@ static jint netty_epoll_native_recvmmsg0(JNIEnv* env, jclass clazz, jint fd, jbo
     int err;
     do {
        res = recvmmsg(fd, msg, len, 0, NULL);
-       // keep on writing if it was interrupted
+       // keep on reading if it was interrupted
     } while (res == -1 && ((err = errno) == EINTR));
 
     if (res < 0) {
