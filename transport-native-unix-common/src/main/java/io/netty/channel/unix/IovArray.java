@@ -136,8 +136,7 @@ public final class IovArray implements MessageProcessor {
                 return add(Buffer.memoryAddress(nioBuffer), nioBuffer.position(), len);
             }
         } else {
-            // TODO: Fix me ?
-            ByteBuffer[] buffers = buf.nioBuffers();
+            ByteBuffer[] buffers = buf.nioBuffers(buf.writerIndex(), buf.writableBytes());
             for (ByteBuffer nioBuffer : buffers) {
                 final int len = nioBuffer.remaining();
                 if (len != 0 &&

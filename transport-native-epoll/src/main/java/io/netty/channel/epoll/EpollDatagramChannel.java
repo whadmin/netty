@@ -497,11 +497,11 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                         if (connected) {
                             read = connectedRead(allocHandle, allocator);
                         } else if (allocHandle.isDelegateScattering()) {
+                            // Try to use scattering reads via recvmmsg(...) syscall.
                             read = scatteringRead(allocHandle, allocator);
                         } else {
                             read = read(allocHandle, allocator);
                         }
-                        // Try to use gathering writes via recvmmsg(...) syscall.
                         if (read) {
                             readPending = false;
                         } else {

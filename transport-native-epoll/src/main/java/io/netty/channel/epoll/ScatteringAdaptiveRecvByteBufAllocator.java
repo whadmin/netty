@@ -84,8 +84,7 @@ public final class ScatteringAdaptiveRecvByteBufAllocator extends AdaptiveRecvBy
             if (numBuffers > 0) {
                 try {
                     for (int i = 0, offset = 0; i < numBuffers; i++, offset += bufferSize) {
-                        ByteBuf slice = buffer.retainedSlice(offset, bufferSize).clear();
-                        buffers.add(slice);
+                        buffers.add(buffer.retainedSlice(offset, bufferSize).clear());
                     }
                 } finally {
                     // We need to call release now as we retained the slices.
