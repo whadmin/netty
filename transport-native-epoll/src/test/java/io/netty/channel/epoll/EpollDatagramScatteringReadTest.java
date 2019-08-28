@@ -25,6 +25,7 @@ import io.netty.channel.socket.DatagramPacket;
 import io.netty.testsuite.transport.TestsuitePermutation;
 import io.netty.testsuite.transport.socket.AbstractDatagramTest;
 import io.netty.util.internal.PlatformDependent;
+import net.bytebuddy.implementation.bytecode.Throw;
 import org.junit.Test;
 
 import java.net.InetSocketAddress;
@@ -47,14 +48,36 @@ public class EpollDatagramScatteringReadTest extends AbstractDatagramTest  {
     }
 
     @Test
-    public void testScatteringRead() throws Throwable {
+    public void testScatteringReadWithFixed() throws Throwable {
         run();
     }
 
-    public void testScatteringRead(Bootstrap sb, Bootstrap cb) throws Throwable {
+    public void testScatteringReadWithFixed(Bootstrap sb, Bootstrap cb) throws Throwable {
+        testScatteringRead(sb, cb, false, true);
+        testScatteringRead(sb, cb, true, true);
+    }
+
+    @Test
+    public void testScatteringReadWithAdaptive() throws Throwable {
+        run();
+    }
+
+    public void testScatteringReadWithAdaptive(Bootstrap sb, Bootstrap cb) throws Throwable {
+        testScatteringRead(sb, cb, false, false);
+        testScatteringRead(sb, cb, true, false);
+    }
+
+    private void testScatteringRead(Bootstrap sb, Bootstrap cb, boolean partial, boolean fixed) throws Throwable {
         int packetSize = 512;
         int numPackets = 4;
-        sb.option(ChannelOption.RCVBUF_ALLOCATOR, new ScatteringFixedRecvByteBufAllocator(packetSize, numPackets));
+        if (fixed) {
+            sb.option(ChannelOption.RCVBUF_ALLOCATOR, new ScatteringFixedRecvByteBufAllocator(
+                    packetSize, partial ? numPackets / 2 : numPackets));
+        } else {
+            // Start with enough space to read two packets with one syscall.
+            sb.option(ChannelOption.RCVBUF_ALLOCATOR, new ScatteringAdaptiveRecvByteBufAllocator(
+                    packetSize, packetSize * (partial ? numPackets / 2 : numPackets), 64 * 1024, packetSize));
+        }
         Channel sc = null;
         Channel cc = null;
 
@@ -76,6 +99,7 @@ public class EpollDatagramScatteringReadTest extends AbstractDatagramTest  {
                 public void channelReadComplete(ChannelHandlerContext ctx) {
                     assertTrue(counter > 1);
                     counter = 0;
+                    ctx.read();
                 }
 
                 @Override
@@ -112,8 +136,8 @@ public class EpollDatagramScatteringReadTest extends AbstractDatagramTest  {
                 f.sync();
             }
 
-            // Trigger a read now which should cause a scattering read (recvmmsg)
-            sc.read();
+            // Enable autoread now which also triggers a read, this should cause scattering reads (recvmmsg) to happen.
+            sc.config().setAutoRead(true);
 
             if (!latch.await(10, TimeUnit.SECONDS)) {
                 Throwable error = errorRef.get();

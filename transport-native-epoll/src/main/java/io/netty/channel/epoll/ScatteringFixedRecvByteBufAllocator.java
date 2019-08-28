@@ -17,15 +17,16 @@ package io.netty.channel.epoll;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.CompositeByteBuf;
 import io.netty.channel.FixedRecvByteBufAllocator;
 import io.netty.channel.MaxMessagesRecvByteBufAllocator;
-import io.netty.channel.RecvByteBufAllocator;
 import io.netty.util.UncheckedBooleanSupplier;
 import io.netty.util.internal.ObjectUtil;
 
+import java.util.List;
+
 /**
  * {@link FixedRecvByteBufAllocator} which allows to use scattering reads {@code recvmmsg}.
+ * It will always allocate {@code numBuffers} {@link ByteBuf} and try to fill these.
  */
 public final class ScatteringFixedRecvByteBufAllocator extends FixedRecvByteBufAllocator {
     private final int numBuffers;
@@ -38,26 +39,31 @@ public final class ScatteringFixedRecvByteBufAllocator extends FixedRecvByteBufA
 
     @Override
     public Handle newHandle() {
-        return new ScatteringHandle(super.newHandle());
+        return new ScatteringHandleImpl(super.newHandle());
     }
 
     @Override
-    public MaxMessagesRecvByteBufAllocator maxMessagesPerRead(int maxMessagesPerRead) {
-        return super.maxMessagesPerRead(Math.max(maxMessagesPerRead, numBuffers));
+    public ScatteringFixedRecvByteBufAllocator maxMessagesPerRead(int maxMessagesPerRead) {
+        super.maxMessagesPerRead(Math.max(maxMessagesPerRead, numBuffers));
+        return this;
     }
 
-    private final class ScatteringHandle extends DelegatingHandle implements ExtendedHandle {
-        ScatteringHandle(Handle delegate) {
+    @Override
+    public ScatteringFixedRecvByteBufAllocator respectMaybeMoreData(boolean respectMaybeMoreData) {
+        super.respectMaybeMoreData(respectMaybeMoreData);
+        return this;
+    }
+
+    private final class ScatteringHandleImpl extends DelegatingHandle implements ScatteringHandle {
+        ScatteringHandleImpl(Handle delegate) {
             super(delegate);
         }
 
         @Override
-        public ByteBuf allocate(ByteBufAllocator alloc) {
-            CompositeByteBuf compositeByteBuf = alloc.compositeDirectBuffer();
+        public void allocateScattering(ByteBufAllocator alloc, List<ByteBuf> buffers) {
             for (int i = 0; i < numBuffers; i++) {
-                compositeByteBuf.addComponent(true, super.allocate(alloc));
+                buffers.add(super.allocate(alloc));
             }
-            return compositeByteBuf;
         }
 
         @Override

@@ -25,21 +25,46 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class ScatteringFixedRecvByteBufAllocatorTest {
+public class ScatteringAdaptiveRecvByteBufAllocatorTest {
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testInvalidBufferSize() {
+        new ScatteringAdaptiveRecvByteBufAllocator(512, 512, 1024, 0);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testMinimumSmallerThenBufferSize() {
+        new ScatteringAdaptiveRecvByteBufAllocator(512, 512, 1024, 756);
+    }
 
     @Test
     public void testAllocate() {
         int size = 512;
-        int numBuffers = 4;
-        ScatteringFixedRecvByteBufAllocator allocator = new ScatteringFixedRecvByteBufAllocator(size, numBuffers);
+        ScatteringAdaptiveRecvByteBufAllocator allocator =
+                new ScatteringAdaptiveRecvByteBufAllocator(size, size, 64 * 1024, size);
         ScatteringHandle handle = (ScatteringHandle) allocator.newHandle();
         List<ByteBuf> buffers = new ArrayList<ByteBuf>();
-        handle.allocateScattering(UnpooledByteBufAllocator.DEFAULT, buffers);
-        assertEquals(numBuffers, buffers.size());
 
-        for (ByteBuf buffer: buffers) {
-            assertEquals(size, buffer.writableBytes());
-            assertTrue(buffer.release());
+        handle.allocateScattering(UnpooledByteBufAllocator.DEFAULT, buffers);
+        assertEquals(1, buffers.size());
+        ByteBuf buffer = buffers.get(0);
+        assertEquals(size, buffer.writableBytes());
+        handle.attemptedBytesRead(buffer.writableBytes());
+        handle.lastBytesRead(buffer.writableBytes());
+        assertTrue(buffer.release());
+        buffers.clear();
+
+        handle.allocateScattering(UnpooledByteBufAllocator.DEFAULT, buffers);
+
+        assertEquals(16, buffers.size());
+
+        for (ByteBuf buf: buffers) {
+            assertEquals(size, buf.writableBytes());
+            buf.release();
+        }
+
+        for (ByteBuf buf: buffers) {
+            assertEquals(0, buf.refCnt());
         }
     }
 }

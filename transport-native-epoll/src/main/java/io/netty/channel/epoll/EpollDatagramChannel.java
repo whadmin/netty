@@ -17,7 +17,7 @@ package io.netty.channel.epoll;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.CompositeByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.AddressedEnvelope;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelMetadata;
@@ -25,7 +25,6 @@ import io.netty.channel.ChannelOutboundBuffer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.DefaultAddressedEnvelope;
-import io.netty.channel.epoll.NativeDatagramPacketArray.NativeDatagramPacket;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.channel.socket.DatagramChannelConfig;
 import io.netty.channel.socket.DatagramPacket;
@@ -35,6 +34,8 @@ import io.netty.channel.unix.Errors;
 import io.netty.channel.unix.IovArray;
 import io.netty.channel.unix.Socket;
 import io.netty.channel.unix.UnixChannelUtil;
+import io.netty.util.ReferenceCountUtil;
+import io.netty.util.internal.RecyclableArrayList;
 import io.netty.util.internal.StringUtil;
 
 import java.io.IOException;
@@ -45,6 +46,7 @@ import java.net.NetworkInterface;
 import java.net.PortUnreachableException;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
+import java.util.List;
 
 import static io.netty.channel.epoll.LinuxSocket.newSocketDgram;
 
@@ -488,116 +490,25 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
 
             Throwable exception = null;
             try {
-                ByteBuf byteBuf = null;
                 try {
                     boolean connected = isConnected();
                     do {
-                        byteBuf = allocHandle.allocate(allocator);
-                        allocHandle.attemptedBytesRead(byteBuf.writableBytes());
-
+                        final boolean read;
                         if (connected) {
-                            try {
-                                allocHandle.lastBytesRead(doReadBytes(byteBuf));
-                            } catch (Errors.NativeIoException e) {
-                                // We need to correctly translate connect errors to match NIO behaviour.
-                                if (e.expectedErr() == Errors.ERROR_ECONNREFUSED_NEGATIVE) {
-                                    PortUnreachableException error = new PortUnreachableException(e.getMessage());
-                                    error.initCause(e);
-                                    throw error;
-                                }
-                                throw e;
-                            }
-                            if (allocHandle.lastBytesRead() <= 0) {
-                                // nothing was read, release the buffer.
-                                byteBuf.release();
-                                byteBuf = null;
-                                break;
-                            }
-                            DatagramPacket packet = new DatagramPacket(
-                                    byteBuf, (InetSocketAddress) localAddress(), (InetSocketAddress) remoteAddress());
-                            allocHandle.incMessagesRead(1);
-
-                            readPending = false;
-
-                            pipeline.fireChannelRead(packet);
-                            byteBuf = null;
+                            read = connectedRead(allocHandle, allocator);
+                        } else if (allocHandle.isDelegateScattering()) {
+                            read = scatteringRead(allocHandle, allocator);
                         } else {
-                            if (byteBuf instanceof CompositeByteBuf) {
-                                // Try to use gathering writes via recvmmsg(...) syscall.
-                                NativeDatagramPacketArray array = cleanDatagramPacketArray();
-                                CompositeByteBuf compositeByteBuf = (CompositeByteBuf) byteBuf;
-                                int numComponents = compositeByteBuf.numComponents();
-                                for (int i = 0; i < numComponents; i++) {
-                                    if (!array.addWritable(compositeByteBuf.component(i))) {
-                                        // Not enough space...
-                                        break;
-                                    }
-                                }
-
-                                NativeDatagramPacketArray.NativeDatagramPacket[] packets = array.packets();
-                                int received = socket.recvmmsg(packets, 0, array.count());
-                                if (received == 0) {
-                                    allocHandle.lastBytesRead(-1);
-                                    byteBuf.release();
-                                    byteBuf = null;
-                                    break;
-                                }
-                                InetSocketAddress local = (InetSocketAddress) localAddress();
-                                DatagramPacket[] receivedPackets = new DatagramPacket[received];
-                                int bytesRead = 0;
-                                for (int i = 0; i < received; i++) {
-                                    NativeDatagramPacket p = packets[i];
-                                    DatagramPacket dPacket =
-                                            p.newDatagramPacket(compositeByteBuf.component(i).retain(), local);
-                                    bytesRead += dPacket.content().readableBytes();
-                                    receivedPackets[i] = dPacket;
-                                }
-                                allocHandle.lastBytesRead(bytesRead);
-                                allocHandle.incMessagesRead(received);
-                                readPending = false;
-
-                                for (DatagramPacket datagramPacket: receivedPackets) {
-                                    pipeline.fireChannelRead(datagramPacket);
-                                }
-                                byteBuf = null;
-                            } else {
-                                final DatagramSocketAddress remoteAddress;
-                                if (byteBuf.hasMemoryAddress()) {
-                                    // has a memory address so use optimized call
-                                    remoteAddress = socket.recvFromAddress(
-                                            byteBuf.memoryAddress(), byteBuf.writerIndex(), byteBuf.capacity());
-                                } else {
-                                    ByteBuffer nioData = byteBuf.internalNioBuffer(
-                                            byteBuf.writerIndex(), byteBuf.writableBytes());
-                                    remoteAddress = socket.recvFrom(nioData, nioData.position(), nioData.limit());
-                                }
-
-                                if (remoteAddress == null) {
-                                    allocHandle.lastBytesRead(-1);
-                                    byteBuf.release();
-                                    byteBuf = null;
-                                    break;
-                                }
-                                InetSocketAddress localAddress = remoteAddress.localAddress();
-                                if (localAddress == null) {
-                                    localAddress = (InetSocketAddress) localAddress();
-                                }
-                                allocHandle.lastBytesRead(remoteAddress.receivedAmount());
-                                allocHandle.incMessagesRead(1);
-
-                                readPending = false;
-                                pipeline.fireChannelRead(
-                                        new DatagramPacket(byteBuf, localAddress, (InetSocketAddress) remoteAddress()));
-                                byteBuf.release();
-                                byteBuf = null;
-                            }
+                            read = read(allocHandle, allocator);
                         }
-
+                        // Try to use gathering writes via recvmmsg(...) syscall.
+                        if (read) {
+                            readPending = false;
+                        } else {
+                            break;
+                        }
                     } while (allocHandle.continueReading());
                 } catch (Throwable t) {
-                    if (byteBuf != null) {
-                        byteBuf.release();
-                    }
                     exception = t;
                 }
 
@@ -609,6 +520,142 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
                 }
             } finally {
                 epollInFinally(config);
+            }
+        }
+    }
+
+    private boolean connectedRead(EpollRecvByteAllocatorHandle allocHandle, ByteBufAllocator allocator)
+            throws Exception {
+        ByteBuf byteBuf = allocHandle.allocate(allocator);
+        try {
+            allocHandle.attemptedBytesRead(byteBuf.writableBytes());
+
+            try {
+                allocHandle.lastBytesRead(doReadBytes(byteBuf));
+            } catch (Errors.NativeIoException e) {
+                // We need to correctly translate connect errors to match NIO behaviour.
+                if (e.expectedErr() == Errors.ERROR_ECONNREFUSED_NEGATIVE) {
+                    PortUnreachableException error = new PortUnreachableException(e.getMessage());
+                    error.initCause(e);
+                    throw error;
+                }
+                throw e;
+            }
+            if (allocHandle.lastBytesRead() <= 0) {
+                // nothing was read, release the buffer.
+                return false;
+            }
+            DatagramPacket packet = new DatagramPacket(byteBuf, localAddress(), remoteAddress());
+            allocHandle.incMessagesRead(1);
+
+            pipeline().fireChannelRead(packet);
+            byteBuf = null;
+            return true;
+        } finally {
+            if (byteBuf != null) {
+                byteBuf.release();
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean scatteringRead(EpollRecvByteAllocatorHandle allocHandle, ByteBufAllocator allocator)
+            throws IOException {
+        // Try to use gathering writes via recvmmsg(...) syscall.
+        NativeDatagramPacketArray array = cleanDatagramPacketArray();
+
+        // RecyclableArray to reduce allocations
+        RecyclableArrayList buffers = RecyclableArrayList.newInstance();
+        allocHandle.allocateScattering(allocator, (List) buffers);
+        try {
+            int numComponents = buffers.size();
+            int attemptedBytes = 0;
+            for (int i = 0; i < numComponents; i++) {
+                ByteBuf buffer = (ByteBuf) buffers.get(i);
+                if (!array.addWritable(buffer)) {
+                    // Not enough space...
+                    break;
+                }
+                attemptedBytes += buffer.writableBytes();
+            }
+            allocHandle.attemptedBytesRead(attemptedBytes);
+
+            NativeDatagramPacketArray.NativeDatagramPacket[] packets = array.packets();
+            int received = socket.recvmmsg(packets, 0, array.count());
+            if (received == 0) {
+                allocHandle.lastBytesRead(-1);
+                return false;
+            }
+            InetSocketAddress local = localAddress();
+            int bytesRead = 0;
+            // Its important that we process all received data out of the NativeDatagramPacketArray
+            // before we call fireChannelRead(...). This is because the user may call flush()
+            // in a channelRead(...) method and so may re-use the NativeDatagramPacketArray again.
+            for (int i = 0; i < received; i++) {
+                ByteBuf buf = (ByteBuf) buffers.get(i);
+                DatagramPacket packet = packets[i].newDatagramPacket(buf, local);
+                bytesRead += packet.content().readableBytes();
+                buffers.set(i,  packet);
+            }
+
+            // release the rest of the buffers that were not used and also ensure we not release them again later on.
+            for (int i = received; i < numComponents; i++) {
+                ((ByteBuf) buffers.set(i, Unpooled.EMPTY_BUFFER)).release();
+            }
+
+            allocHandle.lastBytesRead(bytesRead);
+            allocHandle.incMessagesRead(received);
+
+            for (int i = 0; i < received; i++) {
+                pipeline().fireChannelRead(buffers.get(i));
+            }
+            buffers.recycle();
+            buffers = null;
+            return true;
+        } finally {
+            if (buffers != null) {
+                for (int i = 0; i < buffers.size(); i++) {
+                    ReferenceCountUtil.release(buffers.get(i));
+                }
+                buffers.recycle();
+            }
+        }
+    }
+
+    private boolean read(EpollRecvByteAllocatorHandle allocHandle, ByteBufAllocator allocator) throws IOException {
+        ByteBuf byteBuf = allocHandle.allocate(allocator);
+        try {
+            allocHandle.attemptedBytesRead(byteBuf.writableBytes());
+
+            final DatagramSocketAddress remoteAddress;
+            if (byteBuf.hasMemoryAddress()) {
+                // has a memory address so use optimized call
+                remoteAddress = socket.recvFromAddress(
+                        byteBuf.memoryAddress(), byteBuf.writerIndex(), byteBuf.capacity());
+            } else {
+                ByteBuffer nioData = byteBuf.internalNioBuffer(
+                        byteBuf.writerIndex(), byteBuf.writableBytes());
+                remoteAddress = socket.recvFrom(nioData, nioData.position(), nioData.limit());
+            }
+
+            if (remoteAddress == null) {
+                allocHandle.lastBytesRead(-1);
+                return false;
+            }
+            InetSocketAddress localAddress = remoteAddress.localAddress();
+            if (localAddress == null) {
+                localAddress = localAddress();
+            }
+            allocHandle.lastBytesRead(remoteAddress.receivedAmount());
+            byteBuf.writerIndex(byteBuf.writerIndex() + allocHandle.lastBytesRead());
+            allocHandle.incMessagesRead(1);
+
+            pipeline().fireChannelRead(new DatagramPacket(byteBuf, localAddress, remoteAddress));
+            byteBuf = null;
+            return true;
+        } finally {
+            if (byteBuf != null) {
+                byteBuf.release();
             }
         }
     }
