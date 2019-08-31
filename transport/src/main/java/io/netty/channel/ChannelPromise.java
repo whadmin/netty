@@ -20,18 +20,21 @@ import io.netty.util.concurrent.GenericFutureListener;
 import io.netty.util.concurrent.Promise;
 
 /**
- * Special {@link ChannelFuture} which is writable.
+ * 特殊的{@link ChannelFuture}是可写的。
  */
 public interface ChannelPromise extends ChannelFuture, Promise<Void> {
 
     @Override
     Channel channel();
 
+    /** 标记异步操作成功，标记成功返回当前对象，失败抛出异常 */
     @Override
     ChannelPromise setSuccess(Void result);
 
+    /** 标记异步操作成功，标记成功返回当前对象，失败抛出异常  */
     ChannelPromise setSuccess();
 
+    /** 标记异步操作成功，成功返回true,返回false */
     boolean trySuccess();
 
     @Override

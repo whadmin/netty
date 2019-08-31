@@ -16,51 +16,35 @@
 package io.netty.util.concurrent;
 
 /**
- * Special {@link Future} which is writable.
+ * 特殊的{@link Future}是可写的。
  */
 public interface Promise<V> extends Future<V> {
 
     /**
-     * Marks this future as a success and notifies all
-     * listeners.
-     *
-     * If it is success or failed already it will throw an {@link IllegalStateException}.
+     * 标记异步操作成功，并通知所有监听器触发回调，如果成功返回当前对象
+     * 如果异常操作已经成功或失败会抛出 {@link IllegalStateException}.
      */
     Promise<V> setSuccess(V result);
 
     /**
-     * Marks this future as a success and notifies all
-     * listeners.
-     *
-     * @return {@code true} if and only if successfully marked this future as
-     *         a success. Otherwise {@code false} because this future is
-     *         already marked as either a success or a failure.
+     * 标记异步操作成功，如果成功返回true,如果异常操作已经成功或失败返回false
      */
     boolean trySuccess(V result);
 
     /**
-     * Marks this future as a failure and notifies all
-     * listeners.
-     *
-     * If it is success or failed already it will throw an {@link IllegalStateException}.
+     * 标记异步操作发生异常，并通知所有监听器触发回调，如果成功返回当前对象
+     * 如果异常操作已经成功或失败会抛出 {@link IllegalStateException}.
      */
     Promise<V> setFailure(Throwable cause);
 
     /**
-     * Marks this future as a failure and notifies all
-     * listeners.
-     *
-     * @return {@code true} if and only if successfully marked this future as
-     *         a failure. Otherwise {@code false} because this future is
-     *         already marked as either a success or a failure.
+     * 标记异步操作发生异常，如果成功返回true,如果异常操作已经成功或失败返回false
      */
     boolean tryFailure(Throwable cause);
 
     /**
-     * Make this future impossible to cancel.
-     *
-     * @return {@code true} if and only if successfully marked this future as uncancellable or it is already done
-     *         without being cancelled.  {@code false} if this future has been cancelled already.
+     * 标记异步操作无法取消
+     * 如果当前异步操作成功会标记成功返回true,如果标记前以取消返回false
      */
     boolean setUncancellable();
 

@@ -20,150 +20,113 @@ import java.util.concurrent.TimeUnit;
 
 
 /**
- * The result of an asynchronous operation.
+ * 表示异步操作的结果,优化JDK Future
+ *
+ * 1 异步事件状态重新做了定义
+ *
+ * 已完成	成功	isDone()==true 且 isSuccess()=true
+ * 已完成	失败	isDone()==true 且 cause()!=null
+ * 已完成	用户取消	isDone()==true 且 isCancelled()=true
+ * 尚未完成		isDone()==false
+ *
+ * <pre>
+ *                                      +---------------------------+
+ *                                      | Completed successfully    |
+ *                                      +---------------------------+
+ *                                 +---->      isDone() = true      |
+ * +--------------------------+    |    |   isSuccess() = true      |
+ * |        Uncompleted       |    |    +===========================+
+ * +--------------------------+    |    | Completed with failure    |
+ * |      isDone() = false    |    |    +---------------------------+
+ * |   isSuccess() = false    |----+---->      isDone() = true      |
+ * | isCancelled() = false    |    |    |       cause() = non-null  |
+ * |       cause() = null     |    |    +===========================+
+ * +--------------------------+    |    | Completed by cancellation |
+ *                                 |    +---------------------------+
+ *                                 +---->      isDone() = true      |
+ *                                      | isCancelled() = true      |
+ *                                      +---------------------------+
+ * </pre>
+ * 2 添加异步回调监听器
+ *
  */
-@SuppressWarnings("ClassNameSameAsAncestorName")
 public interface Future<V> extends java.util.concurrent.Future<V> {
 
-    /**
-     * Returns {@code true} if and only if the I/O operation was completed
-     * successfully.
-     */
+    /** 当且仅当异步操作成功完成时，才返回{@code true}。**/
     boolean isSuccess();
 
-    /**
-     * returns {@code true} if and only if the operation can be cancelled via {@link #cancel(boolean)}.
-     */
+    /** 当且仅当异步操作可以取消时，才返回{@code true}。**/
     boolean isCancellable();
 
-    /**
-     * Returns the cause of the failed I/O operation if the I/O operation has
-     * failed.
-     *
-     * @return the cause of the failure.
-     *         {@code null} if succeeded or this future is not
-     *         completed yet.
-     */
+    /** 如果异步操作失败，则返回异步操作失败的原因。 **/
     Throwable cause();
 
-    /**
-     * Adds the specified listener to this future.  The
-     * specified listener is notified when this future is
-     * {@linkplain #isDone() done}.  If this future is already
-     * completed, the specified listener is notified immediately.
-     */
+    /** 将指定的侦听器添加到Future，当异常操作{@link #isDone()}  完成则会立即通知指定的侦听器触发回调操作 **/
     Future<V> addListener(GenericFutureListener<? extends Future<? super V>> listener);
 
-    /**
-     * Adds the specified listeners to this future.  The
-     * specified listeners are notified when this future is
-     * {@linkplain #isDone() done}.  If this future is already
-     * completed, the specified listeners are notified immediately.
-     */
+    /** 将指定的侦听器添加到Future，当异常操作{@link #isDone()}  完成则会立即通知指定的侦听器触发回调操作 **/
     Future<V> addListeners(GenericFutureListener<? extends Future<? super V>>... listeners);
 
-    /**
-     * Removes the first occurrence of the specified listener from this future.
-     * The specified listener is no longer notified when this
-     * future is {@linkplain #isDone() done}.  If the specified
-     * listener is not associated with this future, this method
-     * does nothing and returns silently.
-     */
+    /** 删除指定侦听器 **/
     Future<V> removeListener(GenericFutureListener<? extends Future<? super V>> listener);
 
-    /**
-     * Removes the first occurrence for each of the listeners from this future.
-     * The specified listeners are no longer notified when this
-     * future is {@linkplain #isDone() done}.  If the specified
-     * listeners are not associated with this future, this method
-     * does nothing and returns silently.
-     */
+    /** 删除指定侦听器 **/
     Future<V> removeListeners(GenericFutureListener<? extends Future<? super V>>... listeners);
 
     /**
-     * Waits for this future until it is done, and rethrows the cause of the failure if this future
-     * failed.
-     */
+     * 等待异步操作完成{@link #isDone()},
+     * 如果异步操作由于发生异常而完成，调用{@link #cause()}获取异常信息，并抛出异常
+     * 当前线程响应中断，抛出异常**/
     Future<V> sync() throws InterruptedException;
 
     /**
-     * Waits for this future until it is done, and rethrows the cause of the failure if this future
-     * failed.
-     */
+     * 等待异步操作完成{@link #isDone()},
+     * 如果异步操作由于发生异常而完成，调用{@link #cause()}获取异常信息，并抛出异常
+     * 当前线程不响应中断，抛出异常 **/
     Future<V> syncUninterruptibly();
 
     /**
-     * Waits for this future to be completed.
-     *
-     * @throws InterruptedException
-     *         if the current thread was interrupted
-     */
+     * 等待异步操作完成{@link #isDone()},
+     * 当前线程响应中断，抛出异常
+     * 如果异步操作由于发生异常而完成，可以调用{@link #cause()}获取异常信息 **/
     Future<V> await() throws InterruptedException;
 
     /**
-     * Waits for this future to be completed without
-     * interruption.  This method catches an {@link InterruptedException} and
-     * discards it silently.
-     */
+     * 等待异步操作完成{@link #isDone()},
+     * 当前线程不响应中断，抛出异常
+     * 如果异步操作由于发生异常而完成，可以调用{@link #cause()}获取异常信息**/
     Future<V> awaitUninterruptibly();
 
     /**
-     * Waits for this future to be completed within the
-     * specified time limit.
-     *
-     * @return {@code true} if and only if the future was completed within
-     *         the specified time limit
-     *
-     * @throws InterruptedException
-     *         if the current thread was interrupted
+     * 在超时时间内，等待异步操作完成，如果异常操作在超时时间完成返回true，否则返回false
+     * 当前线程响应中断，抛出异常
      */
     boolean await(long timeout, TimeUnit unit) throws InterruptedException;
 
     /**
-     * Waits for this future to be completed within the
-     * specified time limit.
-     *
-     * @return {@code true} if and only if the future was completed within
-     *         the specified time limit
-     *
-     * @throws InterruptedException
-     *         if the current thread was interrupted
+     * 在超时时间内(默认单位毫秒)，等待异步操作完成，如果异常操作在超时时间完成返回true，否则返回false
+     * 当前线程响应中断，抛出异常
      */
     boolean await(long timeoutMillis) throws InterruptedException;
 
     /**
-     * Waits for this future to be completed within the
-     * specified time limit without interruption.  This method catches an
-     * {@link InterruptedException} and discards it silently.
-     *
-     * @return {@code true} if and only if the future was completed within
-     *         the specified time limit
+     * 在超时时间内，等待异步操作完成，如果异常操作在超时时间完成返回true，否则返回false
+     * 当前线程不响应中断，抛出异常
      */
     boolean awaitUninterruptibly(long timeout, TimeUnit unit);
 
     /**
-     * Waits for this future to be completed within the
-     * specified time limit without interruption.  This method catches an
-     * {@link InterruptedException} and discards it silently.
-     *
-     * @return {@code true} if and only if the future was completed within
-     *         the specified time limit
+     * 在超时时间内(默认单位毫秒)，等待异步操作完成，如果异常操作在超时时间完成返回true，否则返回false
+     * 当前线程不响应中断，抛出异常
      */
     boolean awaitUninterruptibly(long timeoutMillis);
 
     /**
-     * Return the result without blocking. If the future is not done yet this will return {@code null}.
-     *
-     * As it is possible that a {@code null} value is used to mark the future as successful you also need to check
-     * if the future is really done with {@link #isDone()} and not rely on the returned {@code null} value.
+     * 返回结果而不阻塞。如果未来还没有完成，这将返回{@code null}.
      */
     V getNow();
 
-    /**
-     * {@inheritDoc}
-     *
-     * If the cancellation was successful it will fail the future with a {@link CancellationException}.
-     */
+    /** 取消异常操作 */
     @Override
     boolean cancel(boolean mayInterruptIfRunning);
 }
