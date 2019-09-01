@@ -329,7 +329,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
                     if (cause != null) {
                         promise.setFailure(cause);
                     } else {
-                        /** **/
+                        /** 设置Channel已经绑定 **/
                         promise.registered();
                         /** 使用事件循环EventLoop异步处理服务端绑定，promise负责监听绑定操作全过程记录结果 **/
                         doBind0(regFuture, channel, localAddress, promise);
