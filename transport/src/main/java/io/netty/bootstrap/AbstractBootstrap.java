@@ -78,9 +78,16 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      */
     private volatile ChannelHandler handler;
 
+    /**
+     * 实例化AbstractBootstrap
+     */
     AbstractBootstrap() {
     }
 
+
+    /**
+     * 实例化AbstractBootstrap
+     */
     AbstractBootstrap(AbstractBootstrap<B, C> bootstrap) {
         group = bootstrap.group;
         channelFactory = bootstrap.channelFactory;
@@ -113,9 +120,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
 
     /**
-     * The {@link Class} which is used to create {@link Channel} instances from.
-     * You either use this or {@link #channelFactory(io.netty.channel.ChannelFactory)} if your
-     * {@link Channel} implementation has no no-args constructor.
+     * 设置默认创建指定channelClass类的工厂ReflectiveChannelFactory
      */
     public B channel(Class<? extends C> channelClass) {
         return channelFactory(new ReflectiveChannelFactory<C>(
@@ -124,8 +129,14 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * @deprecated Use {@link #channelFactory(io.netty.channel.ChannelFactory)} instead.
+     * 设置指定创建指定channelClass类的工厂
      */
+    @SuppressWarnings({"unchecked", "deprecation"})
+    public B channelFactory(io.netty.channel.ChannelFactory<? extends C> channelFactory) {
+        return channelFactory((ChannelFactory<C>) channelFactory);
+    }
+
+
     @Deprecated
     public B channelFactory(ChannelFactory<? extends C> channelFactory) {
         ObjectUtil.checkNotNull(channelFactory, "channelFactory");
@@ -137,25 +148,6 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return self();
     }
 
-    /**
-     * {@link io.netty.channel.ChannelFactory} which is used to create {@link Channel} instances from
-     * when calling {@link #bind()}. This method is usually only used if {@link #channel(Class)}
-     * is not working for you because of some more complex needs. If your {@link Channel} implementation
-     * has a no-args constructor, its highly recommend to just use {@link #channel(Class)} to
-     * simplify your code.
-     */
-    @SuppressWarnings({"unchecked", "deprecation"})
-    public B channelFactory(io.netty.channel.ChannelFactory<? extends C> channelFactory) {
-        return channelFactory((ChannelFactory<C>) channelFactory);
-    }
-
-    /**
-     * The {@link SocketAddress} which is used to bind the local "end" to.
-     */
-    public B localAddress(SocketAddress localAddress) {
-        this.localAddress = localAddress;
-        return self();
-    }
 
     /**
      * @see #localAddress(SocketAddress)
@@ -176,6 +168,14 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      */
     public B localAddress(InetAddress inetHost, int inetPort) {
         return localAddress(new InetSocketAddress(inetHost, inetPort));
+    }
+
+    /**
+     * 设置绑定的SocketAddress
+     */
+    public B localAddress(SocketAddress localAddress) {
+        this.localAddress = localAddress;
+        return self();
     }
 
     /**
