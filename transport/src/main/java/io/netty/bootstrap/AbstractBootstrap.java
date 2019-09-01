@@ -304,30 +304,34 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
              * 创建一个ChannelPromise，ChannelPromise可以理解未特殊ChannelFuture
              * ChannelFuture 并不参与异步操作，只提供了等待异步完成
              * ChannelPromise 通常参与异步操作，有它监听异步操作设置异步操作result
+             * 用来表示绑定操作异步操作结果
              * **/
             ChannelPromise promise = channel.newPromise();
 
-            /** 使用事件循环EventLoop异步处于服务端绑定 **/
+            /** 使用事件循环EventLoop异步处理服务端绑定，promise负责监听绑定操作全过程记录结果 **/
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
         }
         /** 将hannel注册到EventLoop异步操作未完成**/
         else {
-            // Registration future is almost always fulfilled already, but just in case it's not.
+            /**
+             * 创建一个PendingRegistrationPromise，PendingRegistrationPromise是对ChannelPromise简单扩展
+             * 存在一个是否绑定属性
+             * 用来表示绑定操作异步操作结果 **/
             final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
+
+            /** 给异步操作（将hannel注册到EventLoop操作）设置监听器，在注册完成做回调处理 **/
             regFuture.addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(ChannelFuture future) throws Exception {
+                    /** 如果异步操作（将hannel注册到EventLoop操作），设置promise（绑定异步操作失败）**/
                     Throwable cause = future.cause();
                     if (cause != null) {
-                        // Registration on the EventLoop failed so fail the ChannelPromise directly to not cause an
-                        // IllegalStateException once we try to access the EventLoop of the Channel.
                         promise.setFailure(cause);
                     } else {
-                        // Registration was successful, so set the correct executor to use.
-                        // See https://github.com/netty/netty/issues/2586
+                        /** **/
                         promise.registered();
-
+                        /** 使用事件循环EventLoop异步处理服务端绑定，promise负责监听绑定操作全过程记录结果 **/
                         doBind0(regFuture, channel, localAddress, promise);
                     }
                 }
@@ -399,11 +403,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return self();
     }
 
-    /**
-     * Returns the configured {@link EventLoopGroup} or {@code null} if non is configured yet.
-     *
-     * @deprecated Use {@link #config()} instead.
-     */
+
     @Deprecated
     public final EventLoopGroup group() {
         return group;
@@ -499,8 +499,6 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
     static final class PendingRegistrationPromise extends DefaultChannelPromise {
 
-        // Is set to the correct EventExecutor once the registration was successful. Otherwise it will
-        // stay null and so the GlobalEventExecutor.INSTANCE will be used for notifications.
         private volatile boolean registered;
 
         PendingRegistrationPromise(Channel channel) {
@@ -514,12 +512,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         @Override
         protected EventExecutor executor() {
             if (registered) {
-                // If the registration was a success executor is set.
-                //
-                // See https://github.com/netty/netty/issues/2586
                 return super.executor();
             }
-            // The registration failed so we can only use the GlobalEventExecutor as last resort to notify.
             return GlobalEventExecutor.INSTANCE;
         }
     }
