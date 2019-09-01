@@ -179,8 +179,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * Allow to specify a {@link ChannelOption} which is used for the {@link Channel} instances once they got
-     * created. Use a value of {@code null} to remove a previous set {@link ChannelOption}.
+     * 指定一个{@link ChannelOption}，用于创建@link channel实例后的{@link Channel}。
+     * {@link ChannelOption}用来表示TCP/IP选项
+     * 使用@code NULL值删除前一组{@link ChannelOption}
      */
     public <T> B option(ChannelOption<T> option, T value) {
         ObjectUtil.checkNotNull(option, "option");
@@ -193,8 +194,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * Allow to specify an initial attribute of the newly created {@link Channel}.  If the {@code value} is
-     * {@code null}, the attribute of the specified {@code key} is removed.
+     * 指定新创建的{@link Channel}的初始属性。
+     * 使用@code NULL值删除指定的@code键的属性。
      */
     public <T> B attr(AttributeKey<T> key, T value) {
         ObjectUtil.checkNotNull(key, "key");
@@ -220,17 +221,18 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * Returns a deep clone of this bootstrap which has the identical configuration.  This method is useful when making
-     * multiple {@link Channel}s with similar settings.  Please note that this method does not clone the
-     * {@link EventLoopGroup} deeply but shallowly, making the group a shared resource.
+     * 克隆一个 AbstractBootstrap 对象
      */
     @Override
     @SuppressWarnings("CloneDoesntDeclareCloneNotSupportedException")
     public abstract B clone();
 
     /**
-     * Create a new {@link Channel} and register it with an {@link EventLoop}.
-     */
+     * 1 使用channelFactory工厂实例化Channel
+     * 2 初始化Channel
+     * 3 从选择事件循环组EventLoopGroup选择一个事件循环EventLoop,将Channel注册到EventLoop(内部存在Se)
+     *
+     * 因为注册是异步的过程，所以返回一个 ChannelFuture对象。ChannelFuture表示Channel异步{@link Channel} I/O操作的结果**/
     public ChannelFuture register() {
         validate();
         return initAndRegister();
