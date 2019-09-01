@@ -65,12 +65,23 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * 本地地址
      */
     private volatile SocketAddress localAddress;
+
+    /**
+     * 可选项集合
+     */
     private final Map<ChannelOption<?>, Object> options = new ConcurrentHashMap<ChannelOption<?>, Object>();
+
+    /**
+     * 属性集合
+     */
     private final Map<AttributeKey<?>, Object> attrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
+
+    /**
+     * Channel 处理器
+     */
     private volatile ChannelHandler handler;
 
     AbstractBootstrap() {
-        // Disallow extending from a different package.
     }
 
     AbstractBootstrap(AbstractBootstrap<B, C> bootstrap) {
@@ -95,6 +106,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return self();
     }
 
+    /**
+     * 返回自身
+     */
     @SuppressWarnings("unchecked")
     private B self() {
         return (B) this;
@@ -267,8 +281,17 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        /**
+         * 1 使用channelFactory工厂实例化Channel
+         * 2 初始化Channel
+         * 3 从选择事件循环组EventLoopGroup选择一个事件循环EventLoop,将Channel注册到EventLoop(内部存在Se)
+         * 因为注册是异步的过程，所以返回一个 ChannelFuture对象。ChannelFuture表示异步{@link Channel} I/O操作的结果**/
         final ChannelFuture regFuture = initAndRegister();
+
+
         final Channel channel = regFuture.channel();
+
+        /** 如果将hannel注册到EventLoop操作发生异常，直接返回 **/
         if (regFuture.cause() != null) {
             return regFuture;
         }
