@@ -43,11 +43,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * {@link AbstractBootstrap} is a helper class that makes it easy to bootstrap a {@link Channel}. It support
- * method-chaining to provide an easy way to configure the {@link AbstractBootstrap}.
- *
- * <p>When not used in a {@link ServerBootstrap} context, the {@link #bind()} methods are useful for connectionless
- * transports such as datagram (UDP).</p>
+ * {@link AbstractBootstrap}是一个帮助类，可以很容易地引导{@link Channel}.
+ * 它支持方法链，以提供一种简单的方法来配置{@link AbstractBootstrap}。
  */
 public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C extends Channel> implements Cloneable {
 
@@ -94,8 +91,16 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * The {@link EventLoopGroup} which is used to handle all the events for the to-be-created
-     * {@link Channel}
+     * 方法链函数，返回自身
+     */
+    @SuppressWarnings("unchecked")
+    private B self() {
+        return (B) this;
+    }
+
+
+    /**
+     * 设置{@link EventLoopGroup}用于处理即将创建的{@link Channel}的所有事件
      */
     public B group(EventLoopGroup group) {
         ObjectUtil.checkNotNull(group, "group");
@@ -106,13 +111,6 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return self();
     }
 
-    /**
-     * 返回自身
-     */
-    @SuppressWarnings("unchecked")
-    private B self() {
-        return (B) this;
-    }
 
     /**
      * The {@link Class} which is used to create {@link Channel} instances from.
@@ -209,8 +207,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * Validate all the parameters. Sub-classes may override this, but should
-     * call the super method in that case.
+     * 验证所有参数
      */
     public B validate() {
         if (group == null) {
@@ -240,7 +237,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * Create a new {@link Channel} and bind it.
+     * 创建一个新的{@link Channel}并绑定SocketAddress
      */
     public ChannelFuture bind() {
         validate();
@@ -252,43 +249,46 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * Create a new {@link Channel} and bind it.
+     * 创建一个新的{@link Channel}并绑定指定端口inetPort
      */
     public ChannelFuture bind(int inetPort) {
         return bind(new InetSocketAddress(inetPort));
     }
 
     /**
-     * Create a new {@link Channel} and bind it.
+     * 创建一个新的{@link Channel}并绑定指定地址inetHost，指定端口inetPort
      */
     public ChannelFuture bind(String inetHost, int inetPort) {
         return bind(SocketUtils.socketAddress(inetHost, inetPort));
     }
 
     /**
-     * Create a new {@link Channel} and bind it.
+     * 创建一个新的{@link Channel}并绑定指定地址InetAddress，和端口inetPort
      */
     public ChannelFuture bind(InetAddress inetHost, int inetPort) {
         return bind(new InetSocketAddress(inetHost, inetPort));
     }
 
     /**
-     * Create a new {@link Channel} and bind it.
+     * 创建一个新的{@link Channel}并绑定指定SocketAddress
      */
     public ChannelFuture bind(SocketAddress localAddress) {
+        /** 验证所有参数  **/
         validate();
         return doBind(ObjectUtil.checkNotNull(localAddress, "localAddress"));
     }
 
     private ChannelFuture doBind(final SocketAddress localAddress) {
         /**
+         * initAndRegister
          * 1 使用channelFactory工厂实例化Channel
          * 2 初始化Channel
          * 3 从选择事件循环组EventLoopGroup选择一个事件循环EventLoop,将Channel注册到EventLoop(内部存在Se)
-         * 因为注册是异步的过程，所以返回一个 ChannelFuture对象。ChannelFuture表示异步{@link Channel} I/O操作的结果**/
+         *
+         * 因为注册是异步的过程，所以返回一个 ChannelFuture对象。ChannelFuture表示Channel异步{@link Channel} I/O操作的结果**/
         final ChannelFuture regFuture = initAndRegister();
 
-
+        /** 从ChannelFuture获取绑定Channel **/
         final Channel channel = regFuture.channel();
 
         /** 如果将hannel注册到EventLoop操作发生异常，直接返回 **/
@@ -296,12 +296,21 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return regFuture;
         }
 
+        /** 将hannel注册到EventLoop异步操作完成**/
         if (regFuture.isDone()) {
-            // At this point we know that the registration was complete and successful.
+            /**
+             * 创建一个ChannelPromise，ChannelPromise可以理解未特殊ChannelFuture
+             * ChannelFuture 并不参与异步操作，只提供了等待异步完成
+             * ChannelPromise 通常参与异步操作，有它监听异步操作设置异步操作result
+             * **/
             ChannelPromise promise = channel.newPromise();
+
+            /** 使用事件循环EventLoop异步处于服务端绑定 **/
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
-        } else {
+        }
+        /** 将hannel注册到EventLoop异步操作未完成**/
+        else {
             // Registration future is almost always fulfilled already, but just in case it's not.
             final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
             regFuture.addListener(new ChannelFutureListener() {
@@ -368,8 +377,6 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             final ChannelFuture regFuture, final Channel channel,
             final SocketAddress localAddress, final ChannelPromise promise) {
 
-        // This method is invoked before channelRegistered() is triggered.  Give user handlers a chance to set up
-        // the pipeline in its channelRegistered() implementation.
         channel.eventLoop().execute(new Runnable() {
             @Override
             public void run() {

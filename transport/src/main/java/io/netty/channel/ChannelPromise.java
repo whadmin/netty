@@ -20,7 +20,10 @@ import io.netty.util.concurrent.GenericFutureListener;
 import io.netty.util.concurrent.Promise;
 
 /**
- * 特殊的{@link ChannelFuture}是可写的。
+ * ChannelPromise可以理解为特殊ChannelFuture，
+ *
+ * ChannelFuture 并不参与异步操作，只提供了等待异步完成
+ * ChannelPromise 通常参与异步操作，有它监听异步操作设置异步操作result
  */
 public interface ChannelPromise extends ChannelFuture, Promise<Void> {
 
