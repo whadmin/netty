@@ -21,15 +21,29 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+/**
+ * SelectionKey 集合
+ */
 final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
 
+    /**
+     * SelectionKey 数组
+     */
     SelectionKey[] keys;
+
+    /**
+     * 数组可读大小
+     */
     int size;
 
     SelectedSelectionKeySet() {
+        // 默认 1024 大小
         keys = new SelectionKey[1024];
     }
 
+    /**
+     * 添加
+     */
     @Override
     public boolean add(SelectionKey o) {
         if (o == null) {
@@ -44,21 +58,33 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
         return true;
     }
 
+    /**
+     * 删除
+     */
     @Override
     public boolean remove(Object o) {
         return false;
     }
 
+    /**
+     * 是否包含指定元素0
+     */
     @Override
     public boolean contains(Object o) {
         return false;
     }
 
+    /**
+     * 大小
+     */
     @Override
     public int size() {
         return size;
     }
 
+    /**
+     * 迭代器
+     */
     @Override
     public Iterator<SelectionKey> iterator() {
         return new Iterator<SelectionKey>() {
@@ -84,6 +110,9 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
         };
     }
 
+    /**
+     * 重置
+     */
     void reset() {
         reset(0);
     }
@@ -93,9 +122,15 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
         size = 0;
     }
 
+    /**
+     * 扩容
+     */
     private void increaseCapacity() {
+        // 两倍扩容
         SelectionKey[] newKeys = new SelectionKey[keys.length << 1];
+        // 复制老数组到新数组
         System.arraycopy(keys, 0, newKeys, 0, size);
+        // 赋值给keys
         keys = newKeys;
     }
 }

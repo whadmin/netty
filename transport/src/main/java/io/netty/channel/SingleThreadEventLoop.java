@@ -27,7 +27,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 
 /**
- * Abstract base class for {@link EventLoop}s that execute all its submitted tasks in a single thread.
+ * {@link EventLoop}的抽象基类，用来增加每次循环结束时追加任务集合
  *
  */
 public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor implements EventLoop {
@@ -35,6 +35,9 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
     protected static final int DEFAULT_MAX_PENDING_TASKS = Math.max(16,
             SystemPropertyUtil.getInt("io.netty.eventLoop.maxPendingTasks", Integer.MAX_VALUE));
 
+    /**
+     * 保存每次循环结束时追加一次的任务
+     */
     private final Queue<Runnable> tailTasks;
 
     protected SingleThreadEventLoop(EventLoopGroup parent, ThreadFactory threadFactory, boolean addTaskWakesUp) {
@@ -81,6 +84,9 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         return register(new DefaultChannelPromise(channel, this));
     }
 
+    /**
+     * 将指定Channel注册到选择器中
+     */
     @Override
     public ChannelFuture register(final ChannelPromise promise) {
         ObjectUtil.checkNotNull(promise, "promise");
@@ -103,9 +109,7 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
     }
 
     /**
-     * Adds a task to be run once at the end of next (or current) {@code eventloop} iteration.
-     *
-     * @param task to be added.
+     * 添加要在下一个（或当前）{@code eventloop}迭代结束时运行一次的任务
      */
     @UnstableApi
     public final void executeAfterEventLoopIteration(Runnable task) {
@@ -145,6 +149,9 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         return super.hasTasks() || !tailTasks.isEmpty();
     }
 
+    /**
+     * 获得待执行的任务数量
+     */
     @Override
     public int pendingTasks() {
         return super.pendingTasks() + tailTasks.size();
