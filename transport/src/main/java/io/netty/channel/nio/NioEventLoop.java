@@ -806,10 +806,14 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void select(boolean oldWakenUp) throws IOException {
+        // 记录下 Selector 对象
         Selector selector = this.selector;
         try {
+            // select 计数器
             int selectCnt = 0;
+            // 记录当前时间，单位：纳秒
             long currentTimeNanos = System.nanoTime();
+            // 计算 select 截止时间，单位：纳秒
             long selectDeadLineNanos = currentTimeNanos + delayNanos(currentTimeNanos);
 
             long normalizedDeadlineNanos = selectDeadLineNanos - initialNanoTime();
@@ -818,7 +822,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
 
             for (;;) {
+                // 计算本次 select 的超时时长，单位：毫秒。
+                // + 500000L 是为了四舍五入
+                // / 1000000L 是为了纳秒转为毫秒
                 long timeoutMillis = (selectDeadLineNanos - currentTimeNanos + 500000L) / 1000000L;
+
+                // 如果超时时长，则结束 select
                 if (timeoutMillis <= 0) {
                     if (selectCnt == 0) {
                         selector.selectNow();
@@ -827,32 +836,27 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     break;
                 }
 
-                // If a task was submitted when wakenUp value was true, the task didn't get a chance to call
-                // Selector#wakeup. So we need to check task queue again before executing select operation.
-                // If we don't, the task might be pended until select operation was timed out.
-                // It might be pended until idle timeout if IdleStateHandler existed in pipeline.
+                // 若有新的任务加入
                 if (hasTasks() && wakenUp.compareAndSet(false, true)) {
+                    // selectNow 一次，非阻塞
                     selector.selectNow();
+                    // 重置 select 计数器
                     selectCnt = 1;
                     break;
                 }
 
+                // 阻塞 select ，查询 Channel 是否有就绪的 IO 事件
                 int selectedKeys = selector.select(timeoutMillis);
+                // select 计数器 ++
                 selectCnt ++;
 
+                // 结束 select ，如果满足下面任一一个条件
                 if (selectedKeys != 0 || oldWakenUp || wakenUp.get() || hasTasks() || hasScheduledTasks()) {
-                    // - Selected something,
-                    // - waken up by user, or
-                    // - the task queue has a pending task.
-                    // - a scheduled task is ready for processing
                     break;
                 }
+
+                // 线程被打断。一般情况下不会出现，出现基本是 bug ，或者错误使用。
                 if (Thread.interrupted()) {
-                    // Thread was interrupted so reset selected keys and break so we not run into a busy loop.
-                    // As this is most likely a bug in the handler of the user or it's client library we will
-                    // also log it.
-                    //
-                    // See https://github.com/netty/netty/issues/2426
                     if (logger.isDebugEnabled()) {
                         logger.debug("Selector.select() returned prematurely because " +
                                 "Thread.currentThread().interrupt() was called. Use " +
@@ -862,15 +866,18 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     break;
                 }
 
+                // 记录当前时间
                 long time = System.nanoTime();
+                // 符合 select 超时条件，重置 selectCnt 为 1
                 if (time - TimeUnit.MILLISECONDS.toNanos(timeoutMillis) >= currentTimeNanos) {
                     // timeoutMillis elapsed without anything selected.
                     selectCnt = 1;
-                } else if (SELECTOR_AUTO_REBUILD_THRESHOLD > 0 &&
+                }
+                // 不符合 select 超时的提交，若 select 次数到达重建 Selector 对象的上限，进行重建
+                else if (SELECTOR_AUTO_REBUILD_THRESHOLD > 0 &&
                         selectCnt >= SELECTOR_AUTO_REBUILD_THRESHOLD) {
-                    // The code exists in an extra method to ensure the method is not too big to inline as this
-                    // branch is not very likely to get hit very frequently.
                     selector = selectRebuildSelector(selectCnt);
+                    // 重置 selectCnt 为 1
                     selectCnt = 1;
                     break;
                 }
@@ -893,17 +900,18 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    /**
+     * 重建 Selector 对象
+     */
     private Selector selectRebuildSelector(int selectCnt) throws IOException {
-        // The selector returned prematurely many times in a row.
-        // Rebuild the selector to work around the problem.
         logger.warn(
                 "Selector.select() returned prematurely {} times in a row; rebuilding Selector {}.",
                 selectCnt, selector);
-
+        // 重建 Selector 对象
         rebuildSelector();
+        // 修改下 Selector 对象
         Selector selector = this.selector;
-
-        // Select again to populate selectedKeys.
+        // 立即 selectNow 一次，非阻塞
         selector.selectNow();
         return selector;
     }

@@ -18,7 +18,7 @@ package io.netty.channel;
 import io.netty.util.IntSupplier;
 
 /**
- * Default select strategy.
+ * 默认选择器策略
  */
 final class DefaultSelectStrategy implements SelectStrategy {
     static final SelectStrategy INSTANCE = new DefaultSelectStrategy();
