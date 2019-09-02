@@ -26,9 +26,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Abstract base class for {@link EventExecutor}s that want to support scheduling.
+ * 支持调度的{@link EventExecutor}
  */
 public abstract class AbstractScheduledEventExecutor extends AbstractEventExecutor {
+
+    /** 计划任务默认的比较器 **/
     private static final Comparator<ScheduledFutureTask<?>> SCHEDULED_FUTURE_TASK_COMPARATOR =
             new Comparator<ScheduledFutureTask<?>>() {
                 @Override
@@ -37,55 +39,66 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
                 }
             };
 
+    /** 计划任务队列 **/
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue;
 
+
+    /**
+     * 实例化
+     */
     protected AbstractScheduledEventExecutor() {
     }
 
+    /**
+     * 实例化指定EventExecutorGroup
+     */
     protected AbstractScheduledEventExecutor(EventExecutorGroup parent) {
         super(parent);
     }
 
+
+    /**
+     * 获取事件处理器的执行时间
+     */
     protected static long nanoTime() {
         return ScheduledFutureTask.nanoTime();
     }
 
     /**
-     * Given an arbitrary deadline {@code deadlineNanos}, calculate the number of nano seconds from now
-     * {@code deadlineNanos} would expire.
-     * @param deadlineNanos An arbitrary deadline in nano seconds.
-     * @return the number of nano seconds from now {@code deadlineNanos} would expire.
+     * 给定任意截止日期{@code deadlineNanos}，计算从现在开始的纳秒秒数
      */
     protected static long deadlineToDelayNanos(long deadlineNanos) {
         return ScheduledFutureTask.deadlineToDelayNanos(deadlineNanos);
     }
 
     /**
-     * The initial value used for delay and computations based upon a monatomic time source.
-     * @return initial value used for delay and computations based upon a monatomic time source.
+     *  获取事件处理器的启动时间
      */
     protected static long initialNanoTime() {
         return ScheduledFutureTask.initialNanoTime();
     }
 
+
+    /** 实例化计划任务队列 **/
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue() {
         if (scheduledTaskQueue == null) {
             scheduledTaskQueue = new DefaultPriorityQueue<ScheduledFutureTask<?>>(
                     SCHEDULED_FUTURE_TASK_COMPARATOR,
-                    // Use same initial capacity as java.util.PriorityQueue
                     11);
         }
         return scheduledTaskQueue;
     }
 
+
+    /**
+     * 计划任务队列是否为空
+     */
     private static boolean isNullOrEmpty(Queue<ScheduledFutureTask<?>> queue) {
         return queue == null || queue.isEmpty();
     }
 
     /**
-     * Cancel all scheduled tasks.
-     *
-     * This method MUST be called only when {@link #inEventLoop()} is {@code true}.
+     * 取消所有计划任务。
      */
     protected void cancelScheduledTasks() {
         assert inEventLoop();
@@ -97,6 +110,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         final ScheduledFutureTask<?>[] scheduledTasks =
                 scheduledTaskQueue.toArray(new ScheduledFutureTask<?>[0]);
 
+        //取消所有计划任务
         for (ScheduledFutureTask<?> task: scheduledTasks) {
             task.cancelWithoutRemove(false);
         }
@@ -105,15 +119,18 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     }
 
     /**
-     * @see #pollScheduledTask(long)
+     * 给定当前时间作为截止日期
+     * 获取计划任务队列首个计划任务，如果计划任务符合执行条件从计划任务队列中取出返回。
+     * 否则返回null
      */
     protected final Runnable pollScheduledTask() {
         return pollScheduledTask(nanoTime());
     }
 
     /**
-     * Return the {@link Runnable} which is ready to be executed with the given {@code nanoTime}.
-     * You should use {@link #nanoTime()} to retrieve the correct {@code nanoTime}.
+     * 给定任意截止日期{@code nanoTime}，
+     * 获取计划任务队列首个计划任务，如果计划任务符合执行条件从计划任务队列中取出返回。
+     * 否则返回null
      */
     protected final Runnable pollScheduledTask(long nanoTime) {
         assert inEventLoop();
@@ -128,7 +145,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     }
 
     /**
-     * Return the nanoseconds when the next scheduled task is ready to be run or {@code -1} if no task is scheduled.
+     * 给定当前时间作为截止日期,获取取计划任务队列首个计划任务，返回执行的剩余时间
      */
     protected final long nextScheduledTaskNano() {
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
@@ -136,53 +153,72 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     }
 
     /**
-     * Return the deadline (in nanoseconds) when the next scheduled task is ready to be run or {@code -1}
-     * if no task is scheduled.
+     * 获取取计划任务队列首个计划任务，返回执行的触发时间
      */
     protected final long nextScheduledTaskDeadlineNanos() {
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
         return scheduledTask != null ? scheduledTask.deadlineNanos() : -1;
     }
 
+    /** 获取取计划任务队列首个计划任务 **/
     final ScheduledFutureTask<?> peekScheduledTask() {
         Queue<ScheduledFutureTask<?>> scheduledTaskQueue = this.scheduledTaskQueue;
         return scheduledTaskQueue != null ? scheduledTaskQueue.peek() : null;
     }
 
     /**
-     * Returns {@code true} if a scheduled task is ready for processing.
+     * 从计划任务队列获取一个计划任务，如果计划任务准备好了返回true
      */
     protected final boolean hasScheduledTasks() {
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
         return scheduledTask != null && scheduledTask.deadlineNanos() <= nanoTime();
     }
 
+    /**
+     * 创建并执行在给定延迟后执行的计划任务（一次性）
+     * @param command 执行任务
+     * @param delay    从当前时间开始延迟执行的时间
+     * @param unit     延迟参数的时间单位
+     * @return  ScheduledFuture
+     */
     @Override
     public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
         ObjectUtil.checkNotNull(command, "command");
         ObjectUtil.checkNotNull(unit, "unit");
+        /**  校验  **/
         if (delay < 0) {
             delay = 0;
         }
         validateScheduled0(delay, unit);
-
+        /** 创建一个ScheduledFutureTask添加到计划任务队列 **/
         return schedule(new ScheduledFutureTask<Void>(
                 this, command, null, ScheduledFutureTask.deadlineNanos(unit.toNanos(delay))));
     }
 
+    /**
+     * 创建并执行在给定延迟后执行的计划任务（一次性）
+     * @param callable 执行任务
+     * @param delay    从当前时间开始延迟执行的时间
+     * @param unit     延迟参数的时间单位
+     * @return  ScheduledFuture
+     */
     @Override
     public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
         ObjectUtil.checkNotNull(callable, "callable");
         ObjectUtil.checkNotNull(unit, "unit");
+        /**  校验  **/
         if (delay < 0) {
             delay = 0;
         }
         validateScheduled0(delay, unit);
-
+        /** 创建一个ScheduledFutureTask添加到计划任务队列 **/
         return schedule(new ScheduledFutureTask<V>(
                 this, callable, ScheduledFutureTask.deadlineNanos(unit.toNanos(delay))));
     }
 
+    /**
+     * 延迟initialDelay时间后，每隔period时间执行一次
+     */
     @Override
     public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
         ObjectUtil.checkNotNull(command, "command");
@@ -229,11 +265,6 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         validateScheduled(amount, unit);
     }
 
-    /**
-     * Sub-classes may override this to restrict the maximal amount of time someone can use to schedule a task.
-     *
-     * @deprecated will be removed in the future.
-     */
     @Deprecated
     protected void validateScheduled(long amount, TimeUnit unit) {
         // NOOP
@@ -268,13 +299,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     }
 
     /**
-     * Execute a {@link Runnable} from outside the event loop thread that is responsible for adding or removing
-     * a scheduled action. Note that schedule events which occur on the event loop thread do not interact with this
-     * method.
-     * @param runnable The {@link Runnable} to execute which will add or remove a scheduled action
-     * @param isAddition {@code true} if the {@link Runnable} will add an action, {@code false} if it will remove an
-     *                   action
-     * @param deadlineNanos the deadline in nanos of the scheduled task that will be added or removed.
+     * 将添加计划任务到计划任务队列的任务，添加到任务队列中
      */
     void executeScheduledRunnable(Runnable runnable,
                                             @SuppressWarnings("unused") boolean isAddition,

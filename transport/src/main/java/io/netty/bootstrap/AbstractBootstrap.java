@@ -208,6 +208,11 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
+     * 返回当前 AbstractBootstrap 的配置对象
+     */
+    public abstract AbstractBootstrapConfig<B, C> config();
+
+    /**
      * 验证所有参数
      */
     public B validate() {
@@ -298,7 +303,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return regFuture;
         }
 
-        /** 将hannel注册到EventLoop异步操作完成**/
+        /** 将hannel注册到EventLoop异步操作完成，完成可能表示成功，失败，被取消**/
         if (regFuture.isDone()) {
             /**
              * 创建一个ChannelPromise，ChannelPromise可以理解未特殊ChannelFuture
@@ -324,7 +329,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             regFuture.addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(ChannelFuture future) throws Exception {
-                    /** 如果异步操作（将hannel注册到EventLoop操作），设置promise（绑定异步操作失败）**/
+                    /** 如果异步操作（将hannel注册到EventLoop操作）发生异常，设置promise（绑定异步操作失败）**/
                     Throwable cause = future.cause();
                     if (cause != null) {
                         promise.setFailure(cause);
@@ -383,12 +388,23 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             final ChannelFuture regFuture, final Channel channel,
             final SocketAddress localAddress, final ChannelPromise promise) {
 
+        /** 使用事件循环EventLoop异步处理服务端绑定 **/
         channel.eventLoop().execute(new Runnable() {
             @Override
             public void run() {
+                /**
+                 * 将hannel注册到EventLoop异步操作成功，调用channel.bind绑定
+                 *
+                 * channel.bind
+                 * channel.bingd绑定操作会从pipeline尾部TailContext开始处理，一直遍历到HeadContext,最后交给unsafe
+                 *
+                 * 同时注册ChannelFutureListener.CLOSE_ON_FAILURE监听器，在绑定处理完成后判断是否成功，如果失败关闭Channel
+                 * **/
                 if (regFuture.isSuccess()) {
                     channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
-                } else {
+                }
+                /** 将hannel注册到EventLoop异步操作失败，promise负责写入绑定操作失败原因是由于注册失败 **/
+                else {
                     promise.setFailure(regFuture.cause());
                 }
             }
@@ -409,11 +425,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return group;
     }
 
-    /**
-     * Returns the {@link AbstractBootstrapConfig} object that can be used to obtain the current config
-     * of the bootstrap.
-     */
-    public abstract AbstractBootstrapConfig<B, C> config();
+
 
     final Map<ChannelOption<?>, Object> options0() {
         return options;

@@ -19,7 +19,7 @@ package io.netty.util.concurrent;
 import java.util.concurrent.TimeUnit;
 
 /**
- * A skeletal {@link Future} implementation which represents a {@link Future} which has been completed already.
+ * 一个骨干{@link Future}实现，代表已经完成的{@link Future}。
  */
 public abstract class CompleteFuture<V> extends AbstractFuture<V> {
 

@@ -16,7 +16,7 @@
 package io.netty.util.concurrent;
 
 /**
- * 特殊的{@link Future}是可写的。
+ * 特殊的{@link Future}，可以参与监视异步任务，并设置返回结果
  */
 public interface Promise<V> extends Future<V> {
 

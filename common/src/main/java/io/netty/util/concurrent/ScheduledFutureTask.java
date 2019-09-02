@@ -45,6 +45,8 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
     }
 
     private final long id = nextTaskId.getAndIncrement();
+
+    /** 触发时间*/
     private long deadlineNanos;
     /* 0 - no repeat, >0 - repeat at fixed rate, <0 - repeat with fixed delay */
     private final long periodNanos;
@@ -96,6 +98,9 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
         return Math.max(0, deadlineNanos - nanoTime());
     }
 
+    /**
+     * 返回计划任务的剩余时间
+     */
     public long delayNanos(long currentTimeNanos) {
         return Math.max(0, deadlineNanos() - (currentTimeNanos - START_TIME));
     }

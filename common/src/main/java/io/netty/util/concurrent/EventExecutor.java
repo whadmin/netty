@@ -16,57 +16,50 @@
 package io.netty.util.concurrent;
 
 /**
- * The {@link EventExecutor} is a special {@link EventExecutorGroup} which comes
- * with some handy methods to see if a {@link Thread} is executed in a event loop.
- * Besides this, it also extends the {@link EventExecutorGroup} to allow for a generic
- * way to access methods.
- *
+ * 事件处理器，内部通过工作线程来处理异步任务，
+ * 工作线程通常会在事件循环中不断获取事件来处理
  */
 public interface EventExecutor extends EventExecutorGroup {
 
     /**
-     * Returns a reference to itself.
+     * 返回当前对象引用
      */
     @Override
     EventExecutor next();
 
     /**
-     * Return the {@link EventExecutorGroup} which is the parent of this {@link EventExecutor},
+     * 返回{@link EventExecutorGroup}，它是{@link EventExecutor}的parent，
      */
     EventExecutorGroup parent();
 
     /**
-     * Calls {@link #inEventLoop(Thread)} with {@link Thread#currentThread()} as argument
+     * 当前线程是否是事件处理器的工作线程
      */
     boolean inEventLoop();
 
     /**
-     * Return {@code true} if the given {@link Thread} is executed in the event loop,
-     * {@code false} otherwise.
+     * 判断指定线程是否是事件处理器的工作线程
      */
     boolean inEventLoop(Thread thread);
 
     /**
-     * Return a new {@link Promise}.
+     * 返回一个新的{@link Promise}。
      */
     <V> Promise<V> newPromise();
 
     /**
-     * Create a new {@link ProgressivePromise}.
+     * 返回一个新的{@link ProgressivePromise}.
+     * 相对于{@link Promise}可以指示异步操作的的进度。
      */
     <V> ProgressivePromise<V> newProgressivePromise();
 
     /**
-     * Create a new {@link Future} which is marked as succeeded already. So {@link Future#isSuccess()}
-     * will return {@code true}. All {@link FutureListener} added to it will be notified directly. Also
-     * every call of blocking methods will just return without blocking.
+     * 返回一个新的{@link SucceededFuture}.表示异步操作完成并成功
      */
     <V> Future<V> newSucceededFuture(V result);
 
     /**
-     * Create a new {@link Future} which is marked as failed already. So {@link Future#isSuccess()}
-     * will return {@code false}. All {@link FutureListener} added to it will be notified directly. Also
-     * every call of blocking methods will just return without blocking.
+     * 返回一个新的{@link FailedFuture}.表示异步操作完成并失败
      */
     <V> Future<V> newFailedFuture(Throwable cause);
 }
