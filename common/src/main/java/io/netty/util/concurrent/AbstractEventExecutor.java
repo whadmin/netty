@@ -150,6 +150,7 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
         return new FailedFuture<V>(this, cause);
     }
 
+    /** 提交任务  **/
     @Override
     public Future<?> submit(Runnable task) {
         return (Future<?>) super.submit(task);
@@ -165,6 +166,7 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
         return (Future<T>) super.submit(task);
     }
 
+    /** 创建PromiseTask **/
     @Override
     protected final <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
         return new PromiseTask<T>(this, runnable, value);
@@ -175,6 +177,7 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
         return new PromiseTask<T>(this, callable);
     }
 
+    /** 重写定时任务接口 **/
     @Override
     public ScheduledFuture<?> schedule(Runnable command, long delay,
                                        TimeUnit unit) {

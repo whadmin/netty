@@ -44,13 +44,13 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
 
     /**
-     * 实例化
+     * 实例化AbstractScheduledEventExecutor
      */
     protected AbstractScheduledEventExecutor() {
     }
 
     /**
-     * 实例化指定EventExecutorGroup
+     * 实例化AbstractScheduledEventExecutor指定EventExecutorGroup
      */
     protected AbstractScheduledEventExecutor(EventExecutorGroup parent) {
         super(parent);
@@ -216,11 +216,19 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
                 this, callable, ScheduledFutureTask.deadlineNanos(unit.toNanos(delay))));
     }
 
+
     /**
-     * 延迟initialDelay时间后，每隔period时间执行一次
+     * 在指定延时（initialDelay+period）后周期性（period时间后）执行计划任务，
+     * 下一次执行任务的时间与任务执行过程花费的时间无关
+     * @param command  执行任务
+     * @param initialDelay  第一次执行任务的延时时间
+     * @param period        周期性时间间隔
+     * @param unit          时间单位
+     * @return
      */
     @Override
     public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
+        /** 校验参数 **/
         ObjectUtil.checkNotNull(command, "command");
         ObjectUtil.checkNotNull(unit, "unit");
         if (initialDelay < 0) {
@@ -233,14 +241,24 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         }
         validateScheduled0(initialDelay, unit);
         validateScheduled0(period, unit);
-
+        /** 创建一个ScheduledFutureTask添加到计划任务队列 **/
         return schedule(new ScheduledFutureTask<Void>(
                 this, Executors.<Void>callable(command, null),
                 ScheduledFutureTask.deadlineNanos(unit.toNanos(initialDelay)), unit.toNanos(period)));
     }
 
+    /**
+     * 在指定延时（initialDelay+period）后周期性（period时间后）执行计划任务，
+     * 下一次执行任务的时间必须在前一次任务执行完毕。
+     * @param command  执行任务
+     * @param initialDelay  第一次执行任务的延时时间
+     * @param delay        周期性时间间隔
+     * @param unit          时间单位
+     * @return   ScheduledFuture
+     */
     @Override
     public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
+        /** 校验参数 **/
         ObjectUtil.checkNotNull(command, "command");
         ObjectUtil.checkNotNull(unit, "unit");
         if (initialDelay < 0) {
@@ -254,7 +272,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
         validateScheduled0(initialDelay, unit);
         validateScheduled0(delay, unit);
-
+        /** 创建一个ScheduledFutureTask添加到计划任务队列 **/
         return schedule(new ScheduledFutureTask<Void>(
                 this, Executors.<Void>callable(command, null),
                 ScheduledFutureTask.deadlineNanos(unit.toNanos(initialDelay)), -unit.toNanos(delay)));
@@ -267,9 +285,11 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     @Deprecated
     protected void validateScheduled(long amount, TimeUnit unit) {
-        // NOOP
     }
 
+    /**
+     * 添加指定ScheduledFutureTask到计划任务队列
+     */
     private <V> ScheduledFuture<V> schedule(final ScheduledFutureTask<V> task) {
         if (inEventLoop()) {
             scheduledTaskQueue().add(task);
@@ -285,6 +305,9 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         return task;
     }
 
+    /**
+     * 将指定ScheduledFutureTask从计划任务队列删除
+     */
     final void removeScheduled(final ScheduledFutureTask<?> task) {
         if (inEventLoop()) {
             scheduledTaskQueue().removeTyped(task);
