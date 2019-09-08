@@ -24,11 +24,14 @@ import io.netty.util.concurrent.EventExecutor;
 
 import java.nio.channels.Channels;
 
-/**
 
+/**
+ * io.netty.channel.ChannelHandlerContext ，
+ * 继承 ChannelInboundInvoker、ChannelOutboundInvoker、AttributeMap 接口，ChannelHandler Context( 上下文 )接口，作为 ChannelPipeline 中的节点
  */
 public interface ChannelHandlerContext extends AttributeMap, ChannelInboundInvoker, ChannelOutboundInvoker {
 
+    // ========== Context 相关 ==========
     /**
      * 返回绑定到{@link ChannelHandlerContext}的{@link Channel}
      */
@@ -53,6 +56,13 @@ public interface ChannelHandlerContext extends AttributeMap, ChannelInboundInvok
      * 当前对象ChannelHandler状态是否为 REMOVE_COMPLETE
      */
     boolean isRemoved();
+
+    /**
+     * 返回关联的{@link ChannelPipeline}
+     */
+    ChannelPipeline pipeline();
+
+    // ========== ChannelInboundInvoker 相关 ==========
 
     @Override
     ChannelHandlerContext fireChannelRegistered();
@@ -81,22 +91,20 @@ public interface ChannelHandlerContext extends AttributeMap, ChannelInboundInvok
     @Override
     ChannelHandlerContext fireChannelWritabilityChanged();
 
+    // ========== ChannelOutboundInvoker 相关 ==========
     @Override
     ChannelHandlerContext read();
 
     @Override
     ChannelHandlerContext flush();
 
-    /**
-     * 返回关联的{@link ChannelPipeline}
-     */
-    ChannelPipeline pipeline();
-
+    // ========== ByteBuf 相关 ==========
     /**
      * 返回ByteBufAllocator将用于分配ByteBuf
      */
     ByteBufAllocator alloc();
 
+    // ========== AttributeMap 相关 ==========
     /**
      * @deprecated Use {@link Channel#attr(AttributeKey)}
      */
