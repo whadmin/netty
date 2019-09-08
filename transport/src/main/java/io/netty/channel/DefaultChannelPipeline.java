@@ -47,9 +47,19 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     static final InternalLogger logger = InternalLoggerFactory.getInstance(DefaultChannelPipeline.class);
 
+    /**
+     * {@link #head} 的名字
+     */
     private static final String HEAD_NAME = generateName0(HeadContext.class);
+
+    /**
+     * {@link #tail} 的名字
+     */
     private static final String TAIL_NAME = generateName0(TailContext.class);
 
+    /**
+     * 名字({@link AbstractChannelHandlerContext#name})缓存 ，基于 ThreadLocal ，用于生成在线程中唯一的名字。
+     */
     private static final FastThreadLocal<Map<Class<?>, String>> nameCaches =
             new FastThreadLocal<Map<Class<?>, String>>() {
         @Override
@@ -58,45 +68,87 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     };
 
+    /**
+     * {@link #estimatorHandle} 的原子更新器
+     */
     private static final AtomicReferenceFieldUpdater<DefaultChannelPipeline, MessageSizeEstimator.Handle> ESTIMATOR =
             AtomicReferenceFieldUpdater.newUpdater(
                     DefaultChannelPipeline.class, MessageSizeEstimator.Handle.class, "estimatorHandle");
+
+    /**
+     * Head 节点
+     */
     final AbstractChannelHandlerContext head;
+
+    /**
+     * Tail 节点
+     */
     final AbstractChannelHandlerContext tail;
 
+    /**
+     * 所属 Channel 对象
+     */
     private final Channel channel;
+
+    /**
+     * 成功的 Promise 对象
+     */
     private final ChannelFuture succeededFuture;
+
+    /**
+     * 不进行通知的 Promise 对象
+     * 用于一些方法执行，需要传入 Promise 类型的方法参数，但是不需要进行通知，就传入该值
+     * @see io.netty.channel.AbstractChannel.AbstractUnsafe#safeSetSuccess(ChannelPromise)
+     */
     private final VoidChannelPromise voidPromise;
+
+    /**
+     * TODO 1008 DefaultChannelPipeline 字段用途
+     */
     private final boolean touch = ResourceLeakDetector.isEnabled();
 
+    /**
+     * 子执行器集合。
+     * 默认情况下，ChannelHandler 使用 Channel 所在的 EventLoop 作为执行器。
+     * 但是如果有需要，也可以自定义执行器。详细解析，见 {@link #childExecutor(EventExecutorGroup)} 。
+     * 实际情况下，基本不会用到。和基友【闪电侠】沟通过。
+     */
     private Map<EventExecutorGroup, EventExecutor> childExecutors;
+
+    /**
+     * TODO 1008 DefaultChannelPipeline 字段用途
+     */
     private volatile MessageSizeEstimator.Handle estimatorHandle;
+
+    /**
+     * 是否首次注册
+     */
     private boolean firstRegistration = true;
 
     /**
-     * This is the head of a linked list that is processed by {@link #callHandlerAddedForAllHandlers()} and so process
-     * all the pending {@link #callHandlerAdded0(AbstractChannelHandlerContext)}.
-     *
-     * We only keep the head because it is expected that the list is used infrequently and its size is small.
-     * Thus full iterations to do insertions is assumed to be a good compromised to saving memory and tail management
-     * complexity.
+     * 准备添加 ChannelHandler 的回调
      */
     private PendingHandlerCallback pendingHandlerCallbackHead;
 
     /**
-     * Set to {@code true} once the {@link AbstractChannel} is registered.Once set to {@code true} the value will never
-     * change.
+     * Channel 是否已注册
      */
     private boolean registered;
 
     protected DefaultChannelPipeline(Channel channel) {
+        //校验
         this.channel = ObjectUtil.checkNotNull(channel, "channel");
+        // succeededFuture 的创建
         succeededFuture = new SucceededChannelFuture(channel, null);
+        // voidPromise 的创建
         voidPromise =  new VoidChannelPromise(channel, true);
 
+        // 创建 Tail 及诶点
         tail = new TailContext(this);
+        // 创建 Head 节点
         head = new HeadContext(this);
 
+        // 相互指向
         head.next = tail;
         tail.prev = head;
     }

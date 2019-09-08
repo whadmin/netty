@@ -216,59 +216,27 @@ import java.util.NoSuchElementException;
 public interface ChannelPipeline
         extends ChannelInboundInvoker, ChannelOutboundInvoker, Iterable<Entry<String, ChannelHandler>> {
 
+
+    // ========== 添加 ChannelHandler 相关 ==========
     /**
-     * Inserts a {@link ChannelHandler} at the first position of this pipeline.
-     *
-     * @param name     the name of the handler to insert first
-     * @param handler  the handler to insert first
-     *
-     * @throws IllegalArgumentException
-     *         if there's an entry with the same name already in the pipeline
-     * @throws NullPointerException
-     *         if the specified handler is {@code null}
+     * 将指定名称的ChannelHandler添加到Pipeline链表头部，这里会为ChannelHandler创建AbstractChannelHandlerContext
      */
     ChannelPipeline addFirst(String name, ChannelHandler handler);
 
     /**
-     * Inserts a {@link ChannelHandler} at the first position of this pipeline.
-     *
-     * @param group    the {@link EventExecutorGroup} which will be used to execute the {@link ChannelHandler}
-     *                 methods
-     * @param name     the name of the handler to insert first
-     * @param handler  the handler to insert first
-     *
-     * @throws IllegalArgumentException
-     *         if there's an entry with the same name already in the pipeline
-     * @throws NullPointerException
-     *         if the specified handler is {@code null}
+     * 将指定名称的ChannelHandler添加到Pipeline链表头部，这里会为ChannelHandler创建AbstractChannelHandlerContext
+     * 同时AbstractChannelHandlerContext将使用传入EventExecutorGroup中某一个EventExecutor异步处理
      */
     ChannelPipeline addFirst(EventExecutorGroup group, String name, ChannelHandler handler);
 
     /**
-     * Appends a {@link ChannelHandler} at the last position of this pipeline.
-     *
-     * @param name     the name of the handler to append
-     * @param handler  the handler to append
-     *
-     * @throws IllegalArgumentException
-     *         if there's an entry with the same name already in the pipeline
-     * @throws NullPointerException
-     *         if the specified handler is {@code null}
+     * 将指定名称的ChannelHandler添加到Pipeline链表尾部，这里会为ChannelHandler创建AbstractChannelHandlerContext
      */
     ChannelPipeline addLast(String name, ChannelHandler handler);
 
     /**
-     * Appends a {@link ChannelHandler} at the last position of this pipeline.
-     *
-     * @param group    the {@link EventExecutorGroup} which will be used to execute the {@link ChannelHandler}
-     *                 methods
-     * @param name     the name of the handler to append
-     * @param handler  the handler to append
-     *
-     * @throws IllegalArgumentException
-     *         if there's an entry with the same name already in the pipeline
-     * @throws NullPointerException
-     *         if the specified handler is {@code null}
+     * 将指定名称的ChannelHandler添加到Pipeline链表头部，这里会为ChannelHandler创建AbstractChannelHandlerContext
+     * 同时AbstractChannelHandlerContext将使用传入EventExecutorGroup中某一个EventExecutor异步处理
      */
     ChannelPipeline addLast(EventExecutorGroup group, String name, ChannelHandler handler);
 
