@@ -1008,37 +1008,37 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
 
-
+    /**
+     * 回调 ChannelHandler.callHandlerAdded 添加完成( added )事件
+     */
     final void callHandlerAdded() throws Exception {
-        // We must call setAddComplete before calling handlerAdded. Otherwise if the handlerAdded method generates
-        // any pipeline events ctx.handler() will miss them because the state will not allow it.
+        //变更ChannelHandler处理器状态为已添加
         if (setAddComplete()) {
             handler().handlerAdded(this);
         }
     }
 
+    /**
+     * 回调 ChannelHandler.handlerRemoved 移除完成( removed )事件
+     */
     final void callHandlerRemoved() throws Exception {
         try {
-            // Only call handlerRemoved(...) if we called handlerAdded(...) before.
+            //判断ChannelHandler处理器状态是否为已添加
             if (handlerState == ADD_COMPLETE) {
+                //回调 ChannelHandler.handlerRemoved
                 handler().handlerRemoved(this);
             }
         } finally {
-            // Mark the handler as removed in any case.
+            //设置ChannelHandler处理器状态为已移除
             setRemoved();
         }
     }
 
     /**
-     * Makes best possible effort to detect if {@link ChannelHandler#handlerAdded(ChannelHandlerContext)} was called
-     * yet. If not return {@code false} and if called or could not detect return {@code true}.
-     *
-     * If this method returns {@code false} we will not invoke the {@link ChannelHandler} but just forward the event.
-     * This is needed as {@link DefaultChannelPipeline} may already put the {@link ChannelHandler} in the linked-list
-     * but not called {@link ChannelHandler#handlerAdded(ChannelHandlerContext)}.
+     * 尽最大努力检测是否还调用了{@link ChannelHandler＃handlerAdded（ChannelHandlerContext）}。,
+     * 如果没有返回{@code false}并且如果被调用或无法检测返回{@code true}。
      */
     private boolean invokeHandler() {
-        // Store in local variable to reduce volatile reads.
         int handlerState = this.handlerState;
         return handlerState == ADD_COMPLETE || (!ordered && handlerState == ADD_PENDING);
     }

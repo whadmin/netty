@@ -53,12 +53,14 @@ public interface ChannelInboundInvoker {
     ChannelInboundInvoker fireChannelRead(Object msg);
 
     /**
-     * 触发ChannelInboundHandler.channelReadComplete(ChannelHandlerContext) 事件到下一个ChannelInboundHandler中ChannelPipeline。
+     * 触发ChannelInboundHandler.channelReadComplete(ChannelHandlerContext)
+     * 事件到下一个ChannelInboundHandler中ChannelPipeline。
      */
     ChannelInboundInvoker fireChannelReadComplete();
 
     /**
-     * 触发ChannelInboundHandler.channelWritabilityChanged(ChannelHandlerContext) 事件到下一个ChannelInboundHandler中ChannelPipeline。
+     * 触发ChannelInboundHandler.channelWritabilityChanged(ChannelHandlerContext)
+     * 事件到下一个ChannelInboundHandler中ChannelPipeline。
      */
     ChannelInboundInvoker fireChannelWritabilityChanged();
 }

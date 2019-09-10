@@ -105,16 +105,12 @@ public interface ChannelHandlerContext extends AttributeMap, ChannelInboundInvok
     ByteBufAllocator alloc();
 
     // ========== AttributeMap 相关 ==========
-    /**
-     * @deprecated Use {@link Channel#attr(AttributeKey)}
-     */
+
     @Deprecated
     @Override
     <T> Attribute<T> attr(AttributeKey<T> key);
 
-    /**
-     * @deprecated Use {@link Channel#hasAttr(AttributeKey)}
-     */
+
     @Deprecated
     @Override
     <T> boolean hasAttr(AttributeKey<T> key);
