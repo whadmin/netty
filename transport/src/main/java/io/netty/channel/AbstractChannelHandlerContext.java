@@ -64,23 +64,22 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             AtomicIntegerFieldUpdater.newUpdater(AbstractChannelHandlerContext.class, "handlerState");
 
     /**
-     * 处理器状态 添加准备中
+     * ChannelHandler处理器状态 添加准备中
      */
-
     private static final int ADD_PENDING = 1;
 
     /**
-     * 处理器状态 已添加
+     * ChannelHandler处理器状态 已添加
      */
     private static final int ADD_COMPLETE = 2;
 
     /**
-     * 处理器状态 已移除
+     * ChannelHandler处理器状态 已移除
      */
     private static final int REMOVE_COMPLETE = 3;
 
     /**
-     * 处理器状态 初始化
+     * ChannelHandler处理器状态 初始化
      */
     private static final int INIT = 0;
 
@@ -89,22 +88,50 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
      */
     private volatile int handlerState = INIT;
 
-
+    /**
+     * 上一个节点
+     */
     volatile AbstractChannelHandlerContext next;
+
+    /**
+     * 下一个节点
+     */
     volatile AbstractChannelHandlerContext prev;
 
+    /**
+     * 所属 pipeline
+     */
     private final DefaultChannelPipeline pipeline;
+
+    /**
+     * 名字
+     */
     private final String name;
+
+    /**
+     * 是否使用有序的 EventExecutor ( {@link #executor} )，即 OrderedEventExecutor
+     */
     private final boolean ordered;
+
+
+    /**
+     * 通过二进制描述handler类型，详细参考 {@link #ChannelHandlerMask}
+     */
     private final int executionMask;
 
-    // Will be set to null if no child executor should be used, otherwise it will be set to the
-    // child executor.
+    /**
+     * EventExecutor 对象
+     */
     final EventExecutor executor;
+
+    /**
+     * 成功的 Promise 对象
+     */
     private ChannelFuture succeededFuture;
 
-    // Lazily instantiated tasks used to trigger events to a handler with different executor.
-    // There is no need to make this volatile as at worse it will just create a few more instances then needed.
+    /**
+     * Lazily实例化的任务，用于向具有不同执行程序的处理程序触发事件
+     */
     private Tasks invokeTasks;
 
 
@@ -112,10 +139,13 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor executor,
                                   String name, Class<? extends ChannelHandler> handlerClass) {
         this.name = ObjectUtil.checkNotNull(name, "name");
+        //设置pipeline
         this.pipeline = pipeline;
+        //设置executor
         this.executor = executor;
+        //计算executionMask
         this.executionMask = mask(handlerClass);
-        // Its ordered if its driven by the EventLoop or the given Executor is an instanceof OrderedEventExecutor.
+        //是否使用有序的 EventExecutor
         ordered = executor == null || executor instanceof OrderedEventExecutor;
     }
 
@@ -946,29 +976,38 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return channel().voidPromise();
     }
 
+
+    /**
+     * 设置ChannelHandler处理器状态为已移除
+     */
     final void setRemoved() {
         handlerState = REMOVE_COMPLETE;
     }
 
+    /**
+     * 使用循环 + CAS 保证多线程下的安全变更ChannelHandler处理器状态为已添加
+     */
     final boolean setAddComplete() {
         for (;;) {
             int oldState = handlerState;
             if (oldState == REMOVE_COMPLETE) {
                 return false;
             }
-            // Ensure we never update when the handlerState is REMOVE_COMPLETE already.
-            // oldState is usually ADD_PENDING but can also be REMOVE_COMPLETE when an EventExecutor is used that is not
-            // exposing ordering guarantees.
             if (HANDLER_STATE_UPDATER.compareAndSet(this, oldState, ADD_COMPLETE)) {
                 return true;
             }
         }
     }
 
+    /**
+     * 使用CAS变更ChannelHandler处理器状态为添加准备中，返回是否更新成功
+     */
     final void setAddPending() {
         boolean updated = HANDLER_STATE_UPDATER.compareAndSet(this, INIT, ADD_PENDING);
-        assert updated; // This should always be true as it MUST be called before setAddComplete() or setRemoved().
+        assert updated;
     }
+
+
 
     final void callHandlerAdded() throws Exception {
         // We must call setAddComplete before calling handlerAdded. Otherwise if the handlerAdded method generates

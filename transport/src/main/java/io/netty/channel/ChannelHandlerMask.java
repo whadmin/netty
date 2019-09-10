@@ -69,13 +69,13 @@ final class ChannelHandlerMask {
             };
 
     /**
-     * Return the {@code executionMask}.
+     * 获取ChannelHandler对应类型，使用二进制表示
      */
     static int mask(Class<? extends ChannelHandler> clazz) {
-        // Try to obtain the mask from the cache first. If this fails calculate it and put it in the cache for fast
-        // lookup in the future.
+        // 从MASKS缓存中ChannelHandler对应类型
         Map<Class<? extends ChannelHandler>, Integer> cache = MASKS.get();
         Integer mask = cache.get(clazz);
+        //如果不存在调用mask0计算类型
         if (mask == null) {
             mask = mask0(clazz);
             cache.put(clazz, mask);
@@ -84,7 +84,7 @@ final class ChannelHandlerMask {
     }
 
     /**
-     * Calculate the {@code executionMask}.
+     * 计算{@code executionMask}。
      */
     private static int mask0(Class<? extends ChannelHandler> handlerType) {
         int mask = MASK_EXCEPTION_CAUGHT;
