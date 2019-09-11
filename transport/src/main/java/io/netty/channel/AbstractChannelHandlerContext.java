@@ -164,8 +164,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return channel().config().getAllocator();
     }
 
+    /**
+     * 获取事件处理器
+     */
     @Override
     public EventExecutor executor() {
+        //如果未设置事件处理器，则使用 Channel 的 EventLoop 作为执行器。
         if (executor == null) {
             return channel().eventLoop();
         } else {
@@ -520,16 +524,20 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         if (localAddress == null) {
             throw new NullPointerException("localAddress");
         }
+        // 判断是否为合法的 Promise 对象
         if (isNotValidPromise(promise, false)) {
-            // cancelled
             return promise;
         }
 
+        // 获得下一个Outbound ，且包含Bind实现节点
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_BIND);
+        // 获取事件处理器
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            //同步调用next节点invokeBind方法
             next.invokeBind(localAddress, promise);
         } else {
+            //使用事件处理器异步执行 next.invokeBind
             safeExecute(executor, new Runnable() {
                 @Override
                 public void run() {
@@ -541,13 +549,19 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     private void invokeBind(SocketAddress localAddress, ChannelPromise promise) {
+        // 判断是否符合的 ChannelHandler
         if (invokeHandler()) {
             try {
+                // 调用该 ChannelHandler 的 bind 方法，处理 bind 事件
+                // 如果节点的数据类型为 DefaultChannelHandlerContext 类。那么他的处理器的类型会是 ChannelOutboundHandler
+                // 在ChannelHandler 只有通过执行ctx.bind(remoteAddress, localAddress, promise);才能向前一点传递
                 ((ChannelOutboundHandler) handler()).bind(this, localAddress, promise);
             } catch (Throwable t) {
                 notifyOutboundHandlerException(t, promise);
             }
         } else {
+            // 当前节点ChannelHandler不符合要求
+            // 跳过，传播 Outbound 事件给下一个节点
             bind(localAddress, promise);
         }
     }
@@ -564,16 +578,20 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         if (remoteAddress == null) {
             throw new NullPointerException("remoteAddress");
         }
+        // 判断是否为合法的 Promise 对象
         if (isNotValidPromise(promise, false)) {
-            // cancelled
             return promise;
         }
-
+        // 获得下一个Outbound ，且包含connect实现节点
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_CONNECT);
+        // 获取事件处理器
         EventExecutor executor = next.executor();
+        // 判断当前线程是否是事件处理器工作线程
         if (executor.inEventLoop()) {
+            //同步调用next节点invokeConnect方法
             next.invokeConnect(remoteAddress, localAddress, promise);
         } else {
+            //使用事件处理器异步执行 next.invokeConnect
             safeExecute(executor, new Runnable() {
                 @Override
                 public void run() {
@@ -585,13 +603,20 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     private void invokeConnect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise) {
+        // 判断是否符合的 ChannelHandler
         if (invokeHandler()) {
             try {
+                // 调用该 ChannelHandler 的 connect 方法，处理 bind 事件
+                // 节点的数据类型为 DefaultChannelHandlerContext 类。那么他的处理器的类型会是 ChannelOutboundHandler
+                // 在ChannelHandler 只有通过执行ctx.connect(remoteAddress, localAddress, promise);才能向前一点传递
                 ((ChannelOutboundHandler) handler()).connect(this, remoteAddress, localAddress, promise);
             } catch (Throwable t) {
+                //如果发生异常 通知 Outbound 事件的传播，发生异常
                 notifyOutboundHandlerException(t, promise);
             }
         } else {
+            // 当前节点ChannelHandler不符合要求
+            // 跳过，传播 Outbound 事件给下一个节点
             connect(remoteAddress, localAddress, promise);
         }
     }
@@ -919,14 +944,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     private boolean isNotValidPromise(ChannelPromise promise, boolean allowVoidPromise) {
+        //promise为null
         if (promise == null) {
             throw new NullPointerException("promise");
         }
-
+        // Promise 已经完成
         if (promise.isDone()) {
-            // Check if the promise was cancelled and if so signal that the processing of the operation
-            // should not be performed.
-            //
             // See https://github.com/netty/netty/issues/2349
             if (promise.isCancelled()) {
                 return true;
@@ -934,20 +957,23 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             throw new IllegalArgumentException("promise already done: " + promise);
         }
 
+        // Channel 不匹配
         if (promise.channel() != channel()) {
             throw new IllegalArgumentException(String.format(
                     "promise.channel does not match: %s (expected: %s)", promise.channel(), channel()));
         }
-
+        // promise 的类型为 DefaultChannelPromise
         if (promise.getClass() == DefaultChannelPromise.class) {
             return false;
         }
 
+        // 禁止 VoidChannelPromise
         if (!allowVoidPromise && promise instanceof VoidChannelPromise) {
             throw new IllegalArgumentException(
                     StringUtil.simpleClassName(VoidChannelPromise.class) + " not allowed for this operation");
         }
 
+        // 禁止 CloseFuture
         if (promise instanceof AbstractChannel.CloseFuture) {
             throw new IllegalArgumentException(
                     StringUtil.simpleClassName(AbstractChannel.CloseFuture.class) + " not allowed in a pipeline");
@@ -955,6 +981,9 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return false;
     }
 
+    /**
+     * 获得下一个 Inbound 节点
+     */
     private AbstractChannelHandlerContext findContextInbound(int mask) {
         AbstractChannelHandlerContext ctx = this;
         do {
@@ -963,6 +992,9 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return ctx;
     }
 
+    /**
+     * 获得下一个 Outbound 节点
+     */
     private AbstractChannelHandlerContext findContextOutbound(int mask) {
         AbstractChannelHandlerContext ctx = this;
         do {
@@ -1058,14 +1090,20 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return channel().hasAttr(key);
     }
 
+    /**
+     * 使用事件处理器异步执行任务 runnable
+     */
     private static boolean safeExecute(EventExecutor executor, Runnable runnable, ChannelPromise promise, Object msg) {
         try {
+            //将任务提交给事件处理器执行
             executor.execute(runnable);
             return true;
         } catch (Throwable cause) {
             try {
+                // 发生异常，回调通知 promise 相关的异常
                 promise.setFailure(cause);
             } finally {
+                // 释放 msg 相关的资源
                 if (msg != null) {
                     ReferenceCountUtil.release(msg);
                 }

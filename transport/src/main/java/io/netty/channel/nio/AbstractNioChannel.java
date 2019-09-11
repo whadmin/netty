@@ -50,9 +50,15 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(AbstractNioChannel.class);
 
+    /** Netty NIO Channel 对象，持有的 Java 原生 NIO 的 Channel 对象 **/
     private final SelectableChannel ch;
+
+    /** 感兴趣的读事件的操作位值  **/
     protected final int readInterestOp;
+
+    /** SelectableChannel注册到selector返回 SelectionKey **/
     volatile SelectionKey selectionKey;
+
     boolean readPending;
     private final Runnable clearReadPendingRunnable = new Runnable() {
         @Override
@@ -77,12 +83,17 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      * @param readInterestOp    the ops to set to receive data from the {@link SelectableChannel}
      */
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
+        //调用父 AbstractNioChannel 的构造方法
         super(parent);
+        //设置 Java 原生 NIO 的 Channel 对象
         this.ch = ch;
+        //设置感兴趣的读事件的操作位值
         this.readInterestOp = readInterestOp;
         try {
+            //设置成非阻塞
             ch.configureBlocking(false);
         } catch (IOException e) {
+            //若发生异常，关闭 NIO Channel ，并抛出异常
             try {
                 ch.close();
             } catch (IOException e2) {
@@ -215,9 +226,6 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         protected final void removeReadOp() {
             SelectionKey key = selectionKey();
-            // Check first if the key is still valid as it may be canceled as part of the deregistration
-            // from the EventLoop
-            // See https://github.com/netty/netty/issues/2104
             if (!key.isValid()) {
                 return;
             }
@@ -379,17 +387,15 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+                //将SelectableChannel注册到NioEventLoop内部Selector，并设置当前对象为附件对象
+                //注意这里并没有注册感兴趣的事件，仅仅只是注册而已
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {
                 if (!selected) {
-                    // Force the Selector to select now as the "canceled" SelectionKey may still be
-                    // cached and not removed because no Select.select(..) operation was called yet.
                     eventLoop().selectNow();
                     selected = true;
                 } else {
-                    // We forced a select operation on the selector before but the SelectionKey is still cached
-                    // for whatever reason. JDK bug ?
                     throw e;
                 }
             }

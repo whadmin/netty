@@ -23,7 +23,7 @@ import io.netty.channel.Channel;
 @Deprecated
 public interface ChannelFactory<T extends Channel> {
     /**
-     * Creates a new channel.
+     * 创建 Channel 对象
      */
     T newChannel();
 }

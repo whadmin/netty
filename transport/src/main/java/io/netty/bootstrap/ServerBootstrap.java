@@ -123,26 +123,34 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     @Override
     void init(Channel channel) {
+        // 将options设置到指定Channel内部ChannelConfig中
         setChannelOptions(channel, options0().entrySet().toArray(newOptionArray(0)), logger);
+        // 将attrs设置到指定Channel
         setAttributes(channel, attrs0().entrySet().toArray(newAttrArray(0)));
 
         ChannelPipeline p = channel.pipeline();
 
+        // 记录当前的属性
         final EventLoopGroup currentChildGroup = childGroup;
         final ChannelHandler currentChildHandler = childHandler;
         final Entry<ChannelOption<?>, Object>[] currentChildOptions =
                 childOptions.entrySet().toArray(newOptionArray(0));
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = childAttrs.entrySet().toArray(newAttrArray(0));
 
+        // 添加 ChannelInitializer 对象到 pipeline 中，
+        // ChannelInitializer initChannel 会在触发
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {
                 final ChannelPipeline pipeline = ch.pipeline();
+
+                // 添加配置的 ChannelHandler 到 pipeline 中
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
                     pipeline.addLast(handler);
                 }
-
+                //设置ServerBootstrapAcceptor 到 pipeline 中
+                // ServerBootstrapAcceptor 负责处理连接请求创建 SocketChannel并注册到选择器
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {

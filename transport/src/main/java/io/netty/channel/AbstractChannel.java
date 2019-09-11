@@ -43,16 +43,44 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannel.class);
 
+    /**
+     * 父 Channel 对象
+     */
     private final Channel parent;
+    /**
+     * Channel 编号
+     */
     private final ChannelId id;
+    /**
+     * Unsafe 对象
+     */
     private final Unsafe unsafe;
+    /**
+     * DefaultChannelPipeline 对象
+     */
     private final DefaultChannelPipeline pipeline;
+
+
     private final VoidChannelPromise unsafeVoidPromise = new VoidChannelPromise(this, false);
     private final CloseFuture closeFuture = new CloseFuture(this);
 
+    /**
+     * 本地地址
+     */
     private volatile SocketAddress localAddress;
+
+    /**
+     * 远程地址
+     */
     private volatile SocketAddress remoteAddress;
+    /**
+     * 注册到的EventLoop
+     */
     private volatile EventLoop eventLoop;
+
+    /**
+     * 是否已注册
+     */
     private volatile boolean registered;
     private boolean closeInitiated;
     private Throwable initialCloseCause;
@@ -62,15 +90,16 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     private String strVal;
 
     /**
-     * Creates a new instance.
-     *
-     * @param parent
-     *        the parent of this channel. {@code null} if there's no parent.
+     * 实例化AbstractChannel
      */
     protected AbstractChannel(Channel parent) {
+        //设置父 Channel 对象
         this.parent = parent;
+        //新建Channel 编号
         id = newId();
+        //新建设置unsafe
         unsafe = newUnsafe();
+        //新建设置pipeline
         pipeline = newChannelPipeline();
     }
 
@@ -450,24 +479,31 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         @Override
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
+            // 校验传入的 eventLoop 非空
             if (eventLoop == null) {
                 throw new NullPointerException("eventLoop");
             }
+            // 校验未注册
             if (isRegistered()) {
                 promise.setFailure(new IllegalStateException("registered to an event loop already"));
                 return;
             }
+
+            // 校验 Channel 和 eventLoop 匹配
             if (!isCompatible(eventLoop)) {
                 promise.setFailure(
                         new IllegalStateException("incompatible event loop type: " + eventLoop.getClass().getName()));
                 return;
             }
 
+            // 设置 Channel 的 eventLoop 属性
             AbstractChannel.this.eventLoop = eventLoop;
 
+            /** 如果当前线程不是事件处理器工作线程register0 **/
             if (eventLoop.inEventLoop()) {
                 register0(promise);
             } else {
+                /** 使用事件处理器异步执行 **/
                 try {
                     eventLoop.execute(new Runnable() {
                         @Override
@@ -476,11 +512,15 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         }
                     });
                 } catch (Throwable t) {
+                    //若调用 EventLoop#execute(Runnable) 方法发生异常，则进行处理
                     logger.warn(
                             "Force-closing a channel whose registration task was not accepted by an event loop: {}",
                             AbstractChannel.this, t);
+                    //强制关闭 Channel
                     closeForcibly();
+                    //通知 closeFuture 已经关闭
                     closeFuture.setClosed();
+                    //回调通知 promise 发生该异常
                     safeSetFailure(promise, t);
                 }
             }
@@ -488,39 +528,47 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         private void register0(ChannelPromise promise) {
             try {
-                // check if the channel is still open as it could be closed in the mean time when the register
-                // call was outside of the eventLoop
+                //ensureOpen确保 Channel 是打开的
                 if (!promise.setUncancellable() || !ensureOpen(promise)) {
                     return;
                 }
+                // 记录是否为首次注册
                 boolean firstRegistration = neverRegistered;
+
+                // 执行注册逻辑
                 doRegister();
+
+                // 标记首次注册为 false
                 neverRegistered = false;
+
+                // 标记 Channel 为已注册
                 registered = true;
 
-                // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
-                // user may already fire events through the pipeline in the ChannelFutureListener.
+                //触发pipeline在注册完毕后执行pendingHandlerCallbackHead链表中所有回调。
                 pipeline.invokeHandlerAddedIfNeeded();
 
+                // 回调通知 `promise` 执行成功
                 safeSetSuccess(promise);
+
+                // 触发pipeline，fireChannelRegistered通知
                 pipeline.fireChannelRegistered();
-                // Only fire a channelActive if the channel has never been registered. This prevents firing
-                // multiple channel actives if the channel is deregistered and re-registered.
+
+                // 判断 ServerSocketChannel 是否绑定端口
                 if (isActive()) {
+                    //如果是首次注册调用 触发pipeline.fireChannelActive通知
                     if (firstRegistration) {
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
-                        // This channel was registered before and autoRead() is set. This means we need to begin read
-                        // again so that we process inbound data.
-                        //
                         // See https://github.com/netty/netty/issues/4805
                         beginRead();
                     }
                 }
             } catch (Throwable t) {
-                // Close the channel directly to avoid FD leak.
+                //强制关闭 Channel
                 closeForcibly();
+                //通知 closeFuture 已经关闭
                 closeFuture.setClosed();
+                //回调通知 promise 发生该异常
                 safeSetFailure(promise, t);
             }
         }
@@ -966,11 +1014,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             return unsafeVoidPromise;
         }
 
+        /**
+         * 确保 Channel 是打开的
+         */
         protected final boolean ensureOpen(ChannelPromise promise) {
             if (isOpen()) {
                 return true;
             }
-
+            // 若未打开，回调通知 promise 异常
             safeSetFailure(promise, newClosedChannelException(initialCloseCause));
             return false;
         }
@@ -985,7 +1036,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         }
 
         /**
-         * Marks the specified {@code promise} as failure.  If the {@code promise} is done already, log a message.
          */
         protected final void safeSetFailure(ChannelPromise promise, Throwable cause) {
             if (!(promise instanceof VoidChannelPromise) && !promise.tryFailure(cause)) {
