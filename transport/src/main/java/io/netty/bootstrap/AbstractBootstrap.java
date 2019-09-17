@@ -274,25 +274,24 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
          * initAndRegister
          * 1 使用channelFactory工厂实例化Channel
          * 2 初始化Channel
-         * 3 从选择事件循环组EventLoopGroup选择一个事件循环EventLoop,将Channel注册到EventLoop(内部存在Se)
-         *
-         * 因为注册是异步的过程，所以返回一个 ChannelFuture对象。ChannelFuture表示Channel异步{@link Channel} I/O操作的结果**/
+         * 3 从EventLoopGroup中选择一个EventLoop,异步处理 Channel注册到EventLoop
+         * 4 因为注册是异步的过程，所以返回一个 ChannelFuture对象。ChannelFuture表示Channel异步{@link Channel} I/O操作的结果**/
         final ChannelFuture regFuture = initAndRegister();
 
         /** 从ChannelFuture获取绑定Channel **/
         final Channel channel = regFuture.channel();
 
-        /** 如果将hannel注册到EventLoop操作发生异常，直接返回 **/
+        /** 判断hannel注册到EventLoop操作是否发生异常，如果发生直接返回 **/
         if (regFuture.cause() != null) {
             return regFuture;
         }
 
-        /** 判断Channel注册到EventLoop异步操作是否完成，这里完成可能表示成功，失败，或者被取消**/
+        /** 判断Channel注册到EventLoop异步操作是否完成，这里完成可能表示成功，失败，或者被取消，如果完成进入if**/
         if (regFuture.isDone()) {
             /**
-             * 创建一个ChannelPromise，ChannelPromise可以理解未特殊ChannelFuture
-             * ChannelFuture 并不参与异步操作，只提供了等待通知
-             * ChannelPromise 通常参与异步操作，通过ChannelPromise监听异步操作中流程，并设置异步操作最终状态
+             * 创建一个ChannelPromise，ChannelPromise可以理解为特殊ChannelFuture
+             * ChannelFuture  并不参与异步操作，只提供异步通知，获取异步操作结果的功能
+             * ChannelPromise 通常参与异步操作，通过将ChannelPromise传入异步操作参数中，监听异步操作中流程，并设置异步操作最终状态
              * **/
             ChannelPromise promise = channel.newPromise();
 
@@ -300,26 +299,25 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
         }
-        /** hannel注册到EventLoop异步操作未完成**/
+        /** hannel注册到EventLoop异步操作未完成进入else**/
         else {
             /**
              * 创建一个PendingRegistrationPromise，PendingRegistrationPromise是对ChannelPromise简单扩展
-             * 存在一个是否注册属性
-             * 用来表示注册操作异步操作结果 **/
+             * 存在registered属性 用来表示注册操作异步操作结果 **/
             final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
 
-            /** 给regFuture（将hannel注册到EventLoop操作）设置监听器，在hannel注册到EventLoop完成时触发 **/
+            /** 由于hannel注册到EventLoop异步操作未完成进，在此给regFuture设置监听器，在hannel注册到EventLoop完成时触发 **/
             regFuture.addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(ChannelFuture future) throws Exception {
-                    /** 如果hannel注册到EventLoop操作发生异常，使用promise设置异步操作最终状态发生异常**/
+                    /** 判断hannel注册到EventLoop操作是否发生异常，如果发生将异步设置到promise **/
                     Throwable cause = future.cause();
                     if (cause != null) {
                         promise.setFailure(cause);
                     } else {
-                        /** 在promise中设置Channel已经绑定 **/
+                        /** 在promise中设置Channel已经注册 **/
                         promise.registered();
-                        /** 使用事件循环处理器EventLoop异步处理服务端绑定doBind0，promise负责监听绑定操作全过程记录结果并操作异步处理最终状态 **/
+                        /** 使用事件循环处理器EventLoop异步处理服务端绑定，传入promise负责监听绑定操作全过程，记录结果 **/
                         doBind0(regFuture, channel, localAddress, promise);
                     }
                 }
@@ -331,7 +329,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
-            /** 使用channelFactory 创建 channelClass指定 channel 对象 **/
+            /** 使用channelFactory 创建 channelClass指定 channel 对象创建类型 **/
             channel = channelFactory.newChannel();
             /** 初始化 Channel   **/
             init(channel);
@@ -344,14 +342,14 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
                 /** 返回DefaultChannelPromise **/
                 return new DefaultChannelPromise(channel, GlobalEventExecutor.INSTANCE).setFailure(t);
             }
-            /** 返回带异常的 DefaultChannelPromise 对象。
-            因为创建 Channel 对象失败，所以需要创建一个 FailedChannel 对象，设置到 DefaultChannelPromise 中才可以返回 **/
+            /** 因为创建 Channel 对象失败，所以需要创建一个 FailedChannel 对象，设置到 DefaultChannelPromise 中才可以返回 **/
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
-        /** 首先获得 EventLoopGroup 对象，后调用 EventLoopGroup#register(Channel) 方法，注册 Channel 到 EventLoopGroup 中。
+        /** 首先获得 EventLoopGroup 对象，之后调用 EventLoopGroup#register(Channel) 方法，注册 Channel 到 EventLoopGroup 中。
             实际在方法内部，EventLoopGroup 会分配一个 EventLoop 对象，将 Channel 注册到其上  **/
         ChannelFuture regFuture = config().group().register(channel);
+        /** 判断注册过程是否发生异常 **/
         if (regFuture.cause() != null) {
             /** 若发生异常，并且 Channel 已经注册成功，则调用 #close() 方法，正常关闭 Channel  **/
             if (channel.isRegistered()) {
@@ -362,6 +360,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
                 channel.unsafe().closeForcibly();
             }
         }
+        /** 返回regFuture **/
         return regFuture;
     }
 
@@ -376,17 +375,13 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             @Override
             public void run() {
                 /**
-                 * 将hannel注册到EventLoop异步操作成功，调用channel.bind绑定
-                 *
-                 * channel.bind
-                 * channel.bingd绑定操作会从pipeline尾部TailContext开始处理，一直遍历到HeadContext,最后交给unsafe
-                 *
-                 * 同时注册ChannelFutureListener.CLOSE_ON_FAILURE监听器，在绑定处理完成后判断是否成功，如果失败关闭Channel
-                 * **/
+                 * 判断hannel注册到EventLoop异步操作是否成功，如果成功调用channel.bind绑定
+                 * 同时注册监听器ChannelFutureListener.CLOSE_ON_FAILURE，如果绑定失败，关闭channel
+                 **/
                 if (regFuture.isSuccess()) {
                     channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
                 }
-                /** 将hannel注册到EventLoop异步操作失败，promise负责写入绑定操作失败原因是由于注册失败 **/
+                /** hannel注册到EventLoop异步操作失败，将异常写入promise **/
                 else {
                     promise.setFailure(regFuture.cause());
                 }

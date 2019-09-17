@@ -131,19 +131,24 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         @Override
         public final void read() {
             final ChannelConfig config = config();
+            /** 若 inputClosedSeenErrorOnRead = true ，移除对 SelectionKey.OP_READ 事件的感兴趣  **/
             if (shouldBreakReadReady(config)) {
                 clearReadPending();
                 return;
             }
             final ChannelPipeline pipeline = pipeline();
             final ByteBufAllocator allocator = config.getAllocator();
+            /** 获得 获得 RecvByteBufAllocator.Handle 对象。默认情况下，返回的是 AdaptiveRecvByteBufAllocator.HandleImpl 对象 **/
             final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
+            /** 重置 RecvByteBufAllocator.Handle 对象 **/
             allocHandle.reset(config);
 
             ByteBuf byteBuf = null;
             boolean close = false;
             try {
+                /** while 循环 读取新的写入数据。 **/
                 do {
+                    /** 申请 ByteBuf 对象  **/
                     byteBuf = allocHandle.allocate(allocator);
                     allocHandle.lastBytesRead(doReadBytes(byteBuf));
                     if (allocHandle.lastBytesRead() <= 0) {
@@ -308,7 +313,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     protected abstract long doWriteFileRegion(FileRegion region) throws Exception;
 
     /**
-     * Read bytes into the given {@link ByteBuf} and return the amount.
+     * 读取写入的数据到方法参数 buf 中。它是一个抽象方法，
+     * 返回值为读取到的字节数。
+     * 当返回值小于 0 时，表示对端已经关闭。
      */
     protected abstract int doReadBytes(ByteBuf buf) throws Exception;
 

@@ -64,44 +64,60 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             assert eventLoop().inEventLoop();
             final ChannelConfig config = config();
             final ChannelPipeline pipeline = pipeline();
+            /** 获得 获得 RecvByteBufAllocator.Handle 对象。默认情况下，返回的是 AdaptiveRecvByteBufAllocator.HandleImpl 对象 **/
             final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
+            /** 重置 RecvByteBufAllocator.Handle 对象 **/
             allocHandle.reset(config);
 
             boolean closed = false;
             Throwable exception = null;
             try {
                 try {
+                    /** while 循环 “读取”新的客户端连接连入 **/
                     do {
+                        /** 读取客户端的连接到方法参数 buf 中，返回读取连接个数 **/
                         int localRead = doReadMessages(readBuf);
+                        /** 无可读取的客户端的连接，结束 **/
                         if (localRead == 0) {
                             break;
                         }
+                        /** 读取客户端的连接发生异常  **/
                         if (localRead < 0) {
+                            /**  标记关闭  **/
                             closed = true;
                             break;
                         }
-
+                        /** 读取消息( 客户端 )数量 + localRead  AdaptiveRecvByteBufAllocator **/
                         allocHandle.incMessagesRead(localRead);
-                    } while (allocHandle.continueReading());
+                    }
+                    /** 判断是否循环是否继续，读取( 接受 )新的客户端连接 **/
+                    while (allocHandle.continueReading());
                 } catch (Throwable t) {
+                    /** 读取过程中发生异常，记录该异常到 exception 中 **/
                     exception = t;
                 }
 
+                /**  循环 readBuf 数组，触发 Channel read 事件到 pipeline 中。  **/
                 int size = readBuf.size();
                 for (int i = 0; i < size; i ++) {
                     readPending = false;
                     pipeline.fireChannelRead(readBuf.get(i));
                 }
+                /**   清空 readBuf 数组 **/
                 readBuf.clear();
+                /**  读取完成  **/
                 allocHandle.readComplete();
+                /** 触发 Channel readComplete 事件到 pipeline 中。 **/
                 pipeline.fireChannelReadComplete();
 
+                /**  发生异常  **/
                 if (exception != null) {
+                    /** 判断是否要关闭 **/
                     closed = closeOnReadError(exception);
-
+                    /** 触发 exceptionCaught 事件到 pipeline 中。 **/
                     pipeline.fireExceptionCaught(exception);
                 }
-
+                /** 判断是否要关闭 **/
                 if (closed) {
                     inputShutdown = true;
                     if (isOpen()) {
@@ -109,11 +125,10 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                     }
                 }
             } finally {
-                // Check if there is a readPending which was not processed yet.
-                // This could be for two reasons:
-                // * The user called Channel.read() or ChannelHandlerContext.read() in channelRead(...) method
-                // * The user called Channel.read() or ChannelHandlerContext.read() in channelReadComplete(...) method
-                //
+                // 检查是否有尚未处理的readPending。 ,
+                // 这可能有两个原因：
+                // * 用户在channelRead（...）方法中调用Channel.read（）或ChannelHandlerContext.read（）
+                // * 用户在channelReadComplete（...）方法中调用Channel.read（）或ChannelHandlerContext.read（）
                 // See https://github.com/netty/netty/issues/2254
                 if (!readPending && !config.isAutoRead()) {
                     removeReadOp();
@@ -188,14 +203,13 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
     }
 
     /**
-     * Read messages into the given array and return the amount which was read.
+     * 将消息读入给定数组并返回读取的数量。
      */
     protected abstract int doReadMessages(List<Object> buf) throws Exception;
 
     /**
-     * Write a message to the underlying {@link java.nio.channels.Channel}.
-     *
-     * @return {@code true} if and only if the message has been written
+     * 将消息写入底层{@link java.nio.channels.Channel}。
+
      */
     protected abstract boolean doWriteMessage(Object msg, ChannelOutboundBuffer in) throws Exception;
 }

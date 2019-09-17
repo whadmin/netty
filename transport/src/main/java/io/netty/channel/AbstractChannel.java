@@ -47,21 +47,30 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      * 父 Channel 对象
      */
     private final Channel parent;
+
     /**
      * Channel 编号
      */
     private final ChannelId id;
+
     /**
      * Unsafe 对象
      */
     private final Unsafe unsafe;
+
     /**
      * DefaultChannelPipeline 对象
      */
     private final DefaultChannelPipeline pipeline;
 
-
+    /**
+     * 不进行通知的 Promise 对象
+     */
     private final VoidChannelPromise unsafeVoidPromise = new VoidChannelPromise(this, false);
+
+    /**
+     * Channel 关闭的 Future 对象
+     */
     private final CloseFuture closeFuture = new CloseFuture(this);
 
     /**
@@ -73,6 +82,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      * 远程地址
      */
     private volatile SocketAddress remoteAddress;
+
     /**
      * 注册到的EventLoop
      */
@@ -85,29 +95,25 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     private boolean closeInitiated;
     private Throwable initialCloseCause;
 
-    /** Cache for the string representation of this channel */
     private boolean strValActive;
     private String strVal;
 
     /**
-     * 实例化AbstractChannel
+     *  指定父Channel，实例化AbstractChannel
      */
     protected AbstractChannel(Channel parent) {
         //设置父 Channel 对象
         this.parent = parent;
-        //新建Channel 编号
+        //设置新建Channel 编号
         id = newId();
-        //新建设置unsafe
+        //设置unsafe
         unsafe = newUnsafe();
-        //新建设置pipeline
+        //设置pipeline
         pipeline = newChannelPipeline();
     }
 
     /**
-     * Creates a new instance.
-     *
-     * @param parent
-     *        the parent of this channel. {@code null} if there's no parent.
+     * 指定父Channel，ChannelId来实例化AbstractChannel
      */
     protected AbstractChannel(Channel parent, ChannelId id) {
         this.parent = parent;
@@ -116,29 +122,38 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         pipeline = newChannelPipeline();
     }
 
-    @Override
-    public final ChannelId id() {
-        return id;
-    }
 
     /**
-     * Returns a new {@link DefaultChannelId} instance. Subclasses may override this method to assign custom
-     * {@link ChannelId}s to {@link Channel}s that use the {@link AbstractChannel#AbstractChannel(Channel)} constructor.
+     * 返回一个新的{@link DefaultChannelId}实例
      */
     protected ChannelId newId() {
         return DefaultChannelId.newInstance();
     }
 
     /**
-     * Returns a new {@link DefaultChannelPipeline} instance.
+     * 返回一个新的{@link DefaultChannelPipeline}实例。
      */
     protected DefaultChannelPipeline newChannelPipeline() {
         return new DefaultChannelPipeline(this);
     }
 
+
+    /**
+     * 返回ChannelId
+     */
+    @Override
+    public final ChannelId id() {
+        return id;
+    }
+
+
+    /**
+     * Channel 是否可写
+     */
     @Override
     public boolean isWritable() {
         ChannelOutboundBuffer buf = unsafe.outboundBuffer();
+        //当 Channel 的写缓存区 outbound 非 null 且可写时，返回 true
         return buf != null && buf.isWritable();
     }
 
@@ -388,12 +403,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         return id().compareTo(o.id());
     }
 
-    /**
-     * Returns the {@link String} representation of this channel.  The returned
-     * string contains the {@linkplain #hashCode() ID}, {@linkplain #localAddress() local address},
-     * and {@linkplain #remoteAddress() remote address} of this channel for
-     * easier identification.
-     */
+
     @Override
     public String toString() {
         boolean active = isActive();
@@ -575,8 +585,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         @Override
         public final void bind(final SocketAddress localAddress, final ChannelPromise promise) {
+            // 判断是否在 EventLoop 的线程中。
             assertEventLoop();
 
+            //ensureOpen确保 Channel 是打开的
             if (!promise.setUncancellable() || !ensureOpen(promise)) {
                 return;
             }
@@ -586,16 +598,17 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 localAddress instanceof InetSocketAddress &&
                 !((InetSocketAddress) localAddress).getAddress().isAnyLocalAddress() &&
                 !PlatformDependent.isWindows() && !PlatformDependent.maybeSuperUser()) {
-                // Warn a user about the fact that a non-root user can't receive a
-                // broadcast packet on *nix if the socket is bound on non-wildcard address.
                 logger.warn(
                         "A non-root user can't receive a broadcast packet if the socket " +
                         "is not bound to a wildcard address; binding to a non-wildcard " +
                         "address (" + localAddress + ") anyway as requested.");
             }
 
+            /**  获得 Channel 是否激活( active ) 这里是判断NioServerSocketChannel是否绑定 **/
             boolean wasActive = isActive();
+
             try {
+                /** NioServerSocketChannel 绑定指定端口 **/
                 doBind(localAddress);
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
@@ -603,7 +616,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            /** 如果NioServerSocketChannel之前没有绑定，现在调用doBind绑定 **/
             if (!wasActive && isActive()) {
+                //提交任务
                 invokeLater(new Runnable() {
                     @Override
                     public void run() {
@@ -611,7 +626,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     }
                 });
             }
-
+            /** 回调通知 promise 执行成功 **/
             safeSetSuccess(promise);
         }
 
@@ -1155,12 +1170,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     }
 
     /**
-     * Schedule a read operation.
+     * 安排读取操作。
      */
     protected abstract void doBeginRead() throws Exception;
 
     /**
-     * Flush the content of the given buffer to the remote peer.
+     * 将给定缓冲区的内容刷新到远程对等方。
      */
     protected abstract void doWrite(ChannelOutboundBuffer in) throws Exception;
 

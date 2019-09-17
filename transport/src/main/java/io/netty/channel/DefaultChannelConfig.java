@@ -46,9 +46,12 @@ public class DefaultChannelConfig implements ChannelConfig {
     private static final MessageSizeEstimator DEFAULT_MSG_SIZE_ESTIMATOR = DefaultMessageSizeEstimator.DEFAULT;
 
     private static final int DEFAULT_CONNECT_TIMEOUT = 30000;
-
+    /**
+     * {@link #autoRead} 的原子更新器
+     */
     private static final AtomicIntegerFieldUpdater<DefaultChannelConfig> AUTOREAD_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(DefaultChannelConfig.class, "autoRead");
+
     private static final AtomicReferenceFieldUpdater<DefaultChannelConfig, WriteBufferWaterMark> WATERMARK_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(
                     DefaultChannelConfig.class, WriteBufferWaterMark.class, "writeBufferWaterMark");
@@ -61,6 +64,12 @@ public class DefaultChannelConfig implements ChannelConfig {
 
     private volatile int connectTimeoutMillis = DEFAULT_CONNECT_TIMEOUT;
     private volatile int writeSpinCount = 16;
+
+    /**
+     * 是否开启自动读取的开关
+     * 1 - 开启
+     * 0 - 关闭
+     */
     @SuppressWarnings("FieldMayBeFinal")
     private volatile int autoRead = 1;
     private volatile boolean autoClose = true;
@@ -320,10 +329,15 @@ public class DefaultChannelConfig implements ChannelConfig {
 
     @Override
     public ChannelConfig setAutoRead(boolean autoRead) {
+        /** 使用 AUTOREAD_UPDATER 更新 autoRead 字段，并获得更新前的值 **/
         boolean oldAutoRead = AUTOREAD_UPDATER.getAndSet(this, autoRead ? 1 : 0) == 1;
+        /** 恢复重启开启接受新的客户端连接 调用 NioServerSocketChannel#read() 方法 执行beginRead 的逻辑 **/
         if (autoRead && !oldAutoRead) {
             channel.read();
-        } else if (!autoRead && oldAutoRead) {
+
+        }
+        /** 关闭接受新的客户端连接 调用 #autoReadCleared() 方法，移除对 SelectionKey.OP_ACCEPT 事件的感兴趣。**/
+        else if (!autoRead && oldAutoRead) {
             autoReadCleared();
         }
         return this;

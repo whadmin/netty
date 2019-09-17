@@ -22,28 +22,29 @@ package io.netty.channel;
 public interface ChannelInboundHandler extends ChannelHandler {
 
     /**
-     * The {@link Channel} of the {@link ChannelHandlerContext} was registered with its {@link EventLoop}
+     * 处理 channelRegistered 通知事件 {@link Channel}注册到{@link EventLoop}时触发调用
      */
     void channelRegistered(ChannelHandlerContext ctx) throws Exception;
 
     /**
-     * The {@link Channel} of the {@link ChannelHandlerContext} was unregistered from its {@link EventLoop}
+     * 处理 channelUnregistered 通知事件 {@link Channel}从{@link EventLoop}中注销时触发调用
      */
     void channelUnregistered(ChannelHandlerContext ctx) throws Exception;
 
     /**
-     * The {@link Channel} of the {@link ChannelHandlerContext} is now active
+     * 处理 channelActive 通知事件 表示{@link Channel}已被激活
+     * 对于服务端 ServerSocketChannel ，true 表示 Channel 已经绑定到端口上，可提供服务
+     * 对于客户端 SocketChannel ，true 表示 Channel 连接到远程服务器
      */
     void channelActive(ChannelHandlerContext ctx) throws Exception;
 
     /**
-     * The {@link Channel} of the {@link ChannelHandlerContext} was registered is now inactive and reached its
-     * end of lifetime.
+     * 处理 channelInactive 通知事件 表示{@link Channel}取消激活
      */
     void channelInactive(ChannelHandlerContext ctx) throws Exception;
 
     /**
-     * Invoked when the current {@link Channel} has read a message from the peer.
+     * 处理 channelRead 通知事件
      */
     void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception;
 
@@ -67,7 +68,7 @@ public interface ChannelInboundHandler extends ChannelHandler {
     void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception;
 
     /**
-     * Gets called if a {@link Throwable} was thrown.
+     * 处理 exceptionCaught 通知事件，发生异常时触发调用
      */
     @Override
     @SuppressWarnings("deprecation")

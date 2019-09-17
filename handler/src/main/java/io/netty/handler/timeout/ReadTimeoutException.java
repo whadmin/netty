@@ -18,8 +18,7 @@ package io.netty.handler.timeout;
 import io.netty.util.internal.PlatformDependent;
 
 /**
- * A {@link TimeoutException} raised by {@link ReadTimeoutHandler} when no data
- * was read within a certain period of time.
+ *  读超时( 空闲 )异常
  */
 public final class ReadTimeoutException extends TimeoutException {
 

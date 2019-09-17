@@ -19,24 +19,33 @@ import io.netty.channel.Channel;
 import io.netty.util.internal.ObjectUtil;
 
 /**
- * A user event triggered by {@link IdleStateHandler} when a {@link Channel} is idle.
+ * 空闲事件
  */
 public class IdleStateEvent {
+    /** 读取相关事件  **/
     public static final IdleStateEvent FIRST_READER_IDLE_STATE_EVENT = new IdleStateEvent(IdleState.READER_IDLE, true);
     public static final IdleStateEvent READER_IDLE_STATE_EVENT = new IdleStateEvent(IdleState.READER_IDLE, false);
+
+    /** 写入相关事件  **/
     public static final IdleStateEvent FIRST_WRITER_IDLE_STATE_EVENT = new IdleStateEvent(IdleState.WRITER_IDLE, true);
     public static final IdleStateEvent WRITER_IDLE_STATE_EVENT = new IdleStateEvent(IdleState.WRITER_IDLE, false);
+
+    /** 读取写入相关事件  **/
     public static final IdleStateEvent FIRST_ALL_IDLE_STATE_EVENT = new IdleStateEvent(IdleState.ALL_IDLE, true);
     public static final IdleStateEvent ALL_IDLE_STATE_EVENT = new IdleStateEvent(IdleState.ALL_IDLE, false);
 
+    /**
+     * 空闲状态类型
+     */
     private final IdleState state;
+
+    /**
+     * 是否首次
+     */
     private final boolean first;
 
     /**
-     * Constructor for sub-classes.
-     *
-     * @param state the {@link IdleStateEvent} which triggered the event.
-     * @param first {@code true} if its the first idle event for the {@link IdleStateEvent}.
+     * 实例化空闲事件，指定空闲状态类型以及是否首次
      */
     protected IdleStateEvent(IdleState state, boolean first) {
         this.state = ObjectUtil.checkNotNull(state, "state");
@@ -44,14 +53,14 @@ public class IdleStateEvent {
     }
 
     /**
-     * Returns the idle state.
+     * 返回空闲状态类型
      */
     public IdleState state() {
         return state;
     }
 
     /**
-     * Returns {@code true} if this was the first event for the {@link IdleState}
+     * 返回是否首次
      */
     public boolean isFirst() {
         return first;

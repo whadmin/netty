@@ -26,49 +26,69 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A special {@link ChannelInboundHandler} which offers an easy way to initialize a {@link Channel} once it was
- * registered to its {@link EventLoop}.
+ * 一个特殊的{@link ChannelInboundHandler}，它提供了initChannel模板方法，在Channel注册到{@link EventLoop}后触发。
  *
- * Implementations are most often used in the context of {@link Bootstrap#handler(ChannelHandler)} ,
- * {@link ServerBootstrap#handler(ChannelHandler)} and {@link ServerBootstrap#childHandler(ChannelHandler)} to
- * setup the {@link ChannelPipeline} of a {@link Channel}.
+ * 通常设置到ServerBootstrap {@link Bootstrap#handler(ChannelHandler)}，{@link ServerBootstrap#childHandler(ChannelHandler)}
+ * 或者 Bootstrap {@link Bootstrap#handler(ChannelHandler)}
  *
  * <pre>
- *
  * public class MyChannelInitializer extends {@link ChannelInitializer} {
  *     public void initChannel({@link Channel} channel) {
  *         channel.pipeline().addLast("myHandler", new MyHandler());
  *     }
  * }
- *
  * {@link ServerBootstrap} bootstrap = ...;
  * ...
  * bootstrap.childHandler(new MyChannelInitializer());
  * ...
  * </pre>
- * Be aware that this class is marked as {@link Sharable} and so the implementation must be safe to be re-used.
- *
- * @param <C>   A sub-type of {@link Channel}
+ * 此类标记为{@link Sharable} 表示ChannelInitializer可以作为ChannelHandler重复注册到Pipline中
  */
 @Sharable
 public abstract class ChannelInitializer<C extends Channel> extends ChannelInboundHandlerAdapter {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelInitializer.class);
-    // We use a Set as a ChannelInitializer is usually shared between all Channels in a Bootstrap /
-    // ServerBootstrap. This way we can reduce the memory usage compared to use Attributes.
+
+
+    /**
+     * 由于 ChannelInitializer 可以在 Bootstrap/ServerBootstrap 的所有Pipline中共享，
+     * 所以我们用一个ConcurrentMap作为存储共享ChannelInitializer容器
+     */
     private final Set<ChannelHandlerContext> initMap = Collections.newSetFromMap(
             new ConcurrentHashMap<ChannelHandlerContext, Boolean>());
 
     /**
-     * This method will be called once the {@link Channel} was registered. After the method returns this instance
-     * will be removed from the {@link ChannelPipeline} of the {@link Channel}.
-     *
-     * @param ch            the {@link Channel} which was registered.
-     * @throws Exception    is thrown if an error occurs. In that case it will be handled by
-     *                      {@link #exceptionCaught(ChannelHandlerContext, Throwable)} which will by default close
-     *                      the {@link Channel}.
+     * 模板方法
      */
     protected abstract void initChannel(C ch) throws Exception;
+
+
+    /**
+     * 初始化，ChannelInitializer添加到Pipline，且Channel注册到{@link EventLoop}后触发
+     */
+    @SuppressWarnings("unchecked")
+    private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
+        /** 将ChannelInitializer对应ChannelHandlerContext添加到initMap  解决并发问题**/
+        if (initMap.add(ctx)) {
+            try {
+                /** 调用模板 **/
+                initChannel((C) ctx.channel());
+            } catch (Throwable cause) {
+                /** 发生异常时，执行异常处理 **/
+                exceptionCaught(ctx, cause);
+            } finally {
+                /** ChannelInitializer 初始化完毕 从 pipeline 移除 **/
+                ChannelPipeline pipeline = ctx.pipeline();
+                if (pipeline.context(this) != null) {
+                    pipeline.remove(this);
+                }
+            }
+            /** 初始化成功 **/
+            return true;
+        }
+        /**  初始化失败 **/
+        return false;
+    }
 
     @Override
     @SuppressWarnings("unchecked")
@@ -89,7 +109,7 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     }
 
     /**
-     * Handle the {@link Throwable} by logging and closing the {@link Channel}. Sub-classes may override this.
+     * 从通过记录和关闭{@link Channel}来处理{@link Throwable}。, 子类可以覆盖它。
      */
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
@@ -116,23 +136,7 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
         initMap.remove(ctx);
     }
 
-    @SuppressWarnings("unchecked")
-    private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
-        if (initMap.add(ctx)) { // Guard against re-entrance.
-            try {
-                initChannel((C) ctx.channel());
-            } catch (Throwable cause) {
-                exceptionCaught(ctx, cause);
-            } finally {
-                ChannelPipeline pipeline = ctx.pipeline();
-                if (pipeline.context(this) != null) {
-                    pipeline.remove(this);
-                }
-            }
-            return true;
-        }
-        return false;
-    }
+
 
     private void removeState(final ChannelHandlerContext ctx) {
         // The removal may happen in an async fashion if the EventExecutor we use does something funky.

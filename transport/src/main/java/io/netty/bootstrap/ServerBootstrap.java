@@ -177,6 +177,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
 
+        // 记录ServerBootstrap配置参数
         private final EventLoopGroup childGroup;
         private final ChannelHandler childHandler;
         private final Entry<ChannelOption<?>, Object>[] childOptions;
@@ -191,10 +192,9 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             this.childOptions = childOptions;
             this.childAttrs = childAttrs;
 
-            // Task which is scheduled to re-enable auto-read.
-            // It's important to create this Runnable before we try to submit it as otherwise the URLClassLoader may
-            // not be able to load the class because of the file limit it already reached.
-            //
+            // 计划重新启用自动读取的任务。
+            // 在尝试提交之前创建这个runnable很重要，否则urlclassloader可能
+            // 由于类已达到文件限制，无法加载该类。
             // See https://github.com/netty/netty/issues/1328
             enableAutoReadTask = new Runnable() {
                 @Override
@@ -204,26 +204,43 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             };
         }
 
+        /**
+         * 接受的客户端的 NioSocketChannel 注册到 EventLoop 中
+         */
         @Override
         @SuppressWarnings("unchecked")
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
+            /** 获取接受的客户端的 NioSocketChannel 对象 **/
             final Channel child = (Channel) msg;
 
+            /**
+             * 将childHandler添加到NioSocketChannel对应pipeline双向链表中
+             * 1 这里childHandler类为为ChannelInitializer
+             * 2 由于当前NioSocketChannel并未注册到EventLoop中，并不会第一时间触发 handlerAdded 事件，
+             * 而是创建PendingHandlerAddedTask添加到pipeline内部pendingHandlerCallbackHead链表中。
+             * 在注册完毕触发invokeHandlerAddedIfNeeded时触发 handlerAdded 事件，
+             **/
             child.pipeline().addLast(childHandler);
-
+            /** 将options设置到指定Channel内部ChannelConfig中 **/
             setChannelOptions(child, childOptions, logger);
+            /**  将attrs设置到指定Channel  **/
             setAttributes(child, childAttrs);
 
             try {
+                /** 将客户端的 NioSocketChannel 对象，从 worker EventLoopGroup 中选择一个 EventLoop ，注册到其上 **/
+                /** 添加监听器，如果注册失败，则调用 #forceClose(Channel child, Throwable t) 方法，强制关闭客户端的 NioSocketChannel 连接 **/
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
+                        /**  注册失败，关闭客户端的 NioSocketChannel  **/
                         if (!future.isSuccess()) {
+                            /** 强制关闭客户端的 NioSocketChannel 连接。  **/
                             forceClose(child, future.cause());
                         }
                     }
                 });
             } catch (Throwable t) {
+                /** 强制关闭客户端的 NioSocketChannel 连接。  **/
                 forceClose(child, t);
             }
         }
@@ -233,17 +250,20 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             logger.warn("Failed to register an accepted channel: {}", child, t);
         }
 
+        /**
+         * 当捕获到异常时，暂停 1 秒，不再接受新的客户端连接；而后，再恢复接受新的客户端连接
+         */
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
             final ChannelConfig config = ctx.channel().config();
             if (config.isAutoRead()) {
-                // stop accept new connections for 1 second to allow the channel to recover
+                /** 关闭接受新的客户端连接  **/
                 // See https://github.com/netty/netty/issues/1328
                 config.setAutoRead(false);
+                /**  发起 1 秒的延迟任务，恢复重启开启接受新的客户端连接 **/
                 ctx.channel().eventLoop().schedule(enableAutoReadTask, 1, TimeUnit.SECONDS);
             }
-            // still let the exceptionCaught event flow through the pipeline to give the user
-            // a chance to do something with it
+            /** 继续传播 exceptionCaught 给下一个节点 **/
             ctx.fireExceptionCaught(cause);
         }
     }

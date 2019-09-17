@@ -29,16 +29,54 @@ import java.nio.channels.ScatteringByteChannel;
 
 abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
 
+    /**
+     * Recycler 处理器，用于回收当前对象。
+     */
     private final Recycler.Handle<PooledByteBuf<T>> recyclerHandle;
 
+    /**
+     * Chunk 对象
+     */
     protected PoolChunk<T> chunk;
+
+    /**
+     * 从 Chunk 对象中分配的内存块所处的位置
+     */
     protected long handle;
+
+    /**
+     * 内存空间。具体什么样的数据，通过子类设置泛型( T )
+     * 1) PooledDirectByteBuf 和 PooledUnsafeDirectByteBuf 为 ByteBuffer ；
+     * 2) PooledHeapByteBuf 和 PooledUnsafeHeapByteBuf 为 byte[] 。
+     */
     protected T memory;
+
+    /**
+     * 使用 memory 的开始位置。
+     */
     protected int offset;
+
+    /**
+     * 目前使用 memory 的长度( 大小 )。
+     */
     protected int length;
+
+    /**
+     * 最大使用 memory 的长度( 大小 )。
+     */
     int maxLength;
+
+
     PoolThreadCache cache;
+
+    /**
+     * 临时 ByteBuff 对象，通过 #tmpNioBuf() 方法生成
+     */
     ByteBuffer tmpNioBuf;
+
+    /**
+     * ByteBuf 分配器。
+     */
     private ByteBufAllocator allocator;
 
     @SuppressWarnings("unchecked")

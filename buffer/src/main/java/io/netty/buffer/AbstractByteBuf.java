@@ -67,22 +67,51 @@ public abstract class AbstractByteBuf extends ByteBuf {
     static final ResourceLeakDetector<ByteBuf> leakDetector =
             ResourceLeakDetectorFactory.instance().newResourceLeakDetector(ByteBuf.class);
 
+    /**
+     * 读取位置
+     */
     int readerIndex;
+
+    /**
+     * 写入位置
+     */
     int writerIndex;
+
+    /**
+     * {@link #readerIndex} 读取位置的标记
+     */
     private int markedReaderIndex;
+
+    /**
+     * {@link #writerIndex} 写入位置的标记
+     */
     private int markedWriterIndex;
+
+    /**
+     * 最大容量
+     */
     private int maxCapacity;
 
+    /**
+     * capacity 属性，在 AbstractByteBuf 未定义，而是由子类来实现。
+     * ByteBuf 根据内存类型分成 Heap 和 Direct ，它们获取 capacity 的值的方式不同。
+     */
     protected AbstractByteBuf(int maxCapacity) {
         checkPositiveOrZero(maxCapacity, "maxCapacity");
         this.maxCapacity = maxCapacity;
     }
 
+    /**
+     * 此缓冲区是否只读的
+     */
     @Override
     public boolean isReadOnly() {
         return false;
     }
 
+    /**
+     * 返回此缓冲区的只读版本
+     */
     @SuppressWarnings("deprecation")
     @Override
     public ByteBuf asReadOnly() {
@@ -92,20 +121,87 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return Unpooled.unmodifiableBuffer(this);
     }
 
+    /**
+     * 返回缓冲区允许的最大容量
+     */
     @Override
     public int maxCapacity() {
         return maxCapacity;
     }
 
+    /**
+     * 设置缓冲区允许的最大容量
+     */
     protected final void maxCapacity(int maxCapacity) {
         this.maxCapacity = maxCapacity;
     }
 
+    /**
+     * 返回读取位置
+     */
     @Override
     public int readerIndex() {
         return readerIndex;
     }
 
+    /**
+     * 设置读取位置
+     */
+    @Override
+    public ByteBuf readerIndex(int readerIndex) {
+        //检查坐标边界
+        if (checkBounds) {
+            checkIndexBounds(readerIndex, writerIndex, capacity());
+        }
+        this.readerIndex = readerIndex;
+        return this;
+    }
+
+    /**
+     * 返回写入位置
+     */
+    @Override
+    public int writerIndex() {
+        return writerIndex;
+    }
+
+    /**
+     * 设置写入位置
+     */
+    @Override
+    public ByteBuf writerIndex(int writerIndex) {
+        //检查坐标边界
+        if (checkBounds) {
+            checkIndexBounds(readerIndex, writerIndex, capacity());
+        }
+        this.writerIndex = writerIndex;
+        return this;
+    }
+
+    /**
+     * 设置读取位置，写入位置
+     */
+    @Override
+    public ByteBuf setIndex(int readerIndex, int writerIndex) {
+        //检查坐标边界
+        if (checkBounds) {
+            checkIndexBounds(readerIndex, writerIndex, capacity());
+        }
+        setIndex0(readerIndex, writerIndex);
+        return this;
+    }
+
+    /**
+     * 设置读取位置，写入位置
+     */
+    final void setIndex0(int readerIndex, int writerIndex) {
+        this.readerIndex = readerIndex;
+        this.writerIndex = writerIndex;
+    }
+
+    /**
+     * 检查坐标边界
+     */
     private static void checkIndexBounds(final int readerIndex, final int writerIndex, final int capacity) {
         if (readerIndex < 0 || readerIndex > writerIndex || writerIndex > capacity) {
             throw new IndexOutOfBoundsException(String.format(
@@ -114,44 +210,17 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
     }
 
-    @Override
-    public ByteBuf readerIndex(int readerIndex) {
-        if (checkBounds) {
-            checkIndexBounds(readerIndex, writerIndex, capacity());
-        }
-        this.readerIndex = readerIndex;
-        return this;
-    }
 
-    @Override
-    public int writerIndex() {
-        return writerIndex;
-    }
-
-    @Override
-    public ByteBuf writerIndex(int writerIndex) {
-        if (checkBounds) {
-            checkIndexBounds(readerIndex, writerIndex, capacity());
-        }
-        this.writerIndex = writerIndex;
-        return this;
-    }
-
-    @Override
-    public ByteBuf setIndex(int readerIndex, int writerIndex) {
-        if (checkBounds) {
-            checkIndexBounds(readerIndex, writerIndex, capacity());
-        }
-        setIndex0(readerIndex, writerIndex);
-        return this;
-    }
-
+    /**
+     * 清空读取位置，写入位置
+     */
     @Override
     public ByteBuf clear() {
         readerIndex = writerIndex = 0;
         return this;
     }
 
+    //====================是否可读====================
     @Override
     public boolean isReadable() {
         return writerIndex > readerIndex;
@@ -163,6 +232,12 @@ public abstract class AbstractByteBuf extends ByteBuf {
     }
 
     @Override
+    public int readableBytes() {
+        return writerIndex - readerIndex;
+    }
+
+    //====================是否可写====================
+    @Override
     public boolean isWritable() {
         return capacity() > writerIndex;
     }
@@ -170,11 +245,6 @@ public abstract class AbstractByteBuf extends ByteBuf {
     @Override
     public boolean isWritable(int numBytes) {
         return capacity() - writerIndex >= numBytes;
-    }
-
-    @Override
-    public int readableBytes() {
-        return writerIndex - readerIndex;
     }
 
     @Override
@@ -187,107 +257,170 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return maxCapacity() - writerIndex;
     }
 
+    //====================标记读====================
+    /**
+     * 标记读位置
+     */
     @Override
     public ByteBuf markReaderIndex() {
         markedReaderIndex = readerIndex;
         return this;
     }
 
+    /**
+     * 重置读位置到已标记处
+     */
     @Override
     public ByteBuf resetReaderIndex() {
         readerIndex(markedReaderIndex);
         return this;
     }
 
+    //====================标记写====================
+
+    /**
+     * 标记写位置
+     */
     @Override
     public ByteBuf markWriterIndex() {
         markedWriterIndex = writerIndex;
         return this;
     }
 
+    /**
+     * 重置写位置到已标记处
+     */
     @Override
     public ByteBuf resetWriterIndex() {
         writerIndex(markedWriterIndex);
         return this;
     }
 
+    /**
+     * 释放【所有的】废弃段的空间内存
+     */
     @Override
     public ByteBuf discardReadBytes() {
+        /** 校验可访问 */
         ensureAccessible();
+        /** 无废弃段，直接返回 */
         if (readerIndex == 0) {
             return this;
         }
 
+        /** 未读取完 */
         if (readerIndex != writerIndex) {
+            /** 将可读段复制到 ByteBuf 头 */
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
+            /** 写索引减小 */
             writerIndex -= readerIndex;
+            /** 对读写标记为做调整 */
             adjustMarkers(readerIndex);
+            /** 读索引重置为 0 */
             readerIndex = 0;
-        } else {
+        }
+        /**  全部读取完 */
+        else {
+            /** 对读写标记为做调整 */
             adjustMarkers(readerIndex);
+            /** 读写位置都重置为 0 */
             writerIndex = readerIndex = 0;
         }
         return this;
     }
 
+    /**
+     * 读取超过容量的一半，释放【所有的】废弃段的空间内存
+     */
     @Override
     public ByteBuf discardSomeReadBytes() {
+        /** 校验可访问 */
         ensureAccessible();
+        /** 无废弃段，直接返回 */
         if (readerIndex == 0) {
             return this;
         }
 
+        /**  全部读取完 */
         if (readerIndex == writerIndex) {
+            /** 对读写标记为做调整 */
             adjustMarkers(readerIndex);
+            /** 读写位置都重置为 0 */
             writerIndex = readerIndex = 0;
             return this;
         }
 
+        /**  读取超过容量的一半，进行释放 */
         if (readerIndex >= capacity() >>> 1) {
+            /** 将可读段复制到 ByteBuf 头 */
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
+            /** 写索引减小 */
             writerIndex -= readerIndex;
+            /** 对读写标记为做调整 */
             adjustMarkers(readerIndex);
+            /** 读索引重置为 0 */
             readerIndex = 0;
         }
         return this;
     }
 
+    /**
+     * 对读写标记为做调整
+     */
     protected final void adjustMarkers(int decrement) {
+        /** 获取原始读标记位置 */
         int markedReaderIndex = this.markedReaderIndex;
+         /** 读标记位小于减少值(decrement) */
         if (markedReaderIndex <= decrement) {
+            /** 重置读标记位为 0 */
             this.markedReaderIndex = 0;
+            /** 获取原始写标记位置 */
             int markedWriterIndex = this.markedWriterIndex;
+            /** 写标记位小于减少值(decrement) */
             if (markedWriterIndex <= decrement) {
+                /** 重置写标记位为 0 */
                 this.markedWriterIndex = 0;
             } else {
+                /** 减小写标记位 */
                 this.markedWriterIndex = markedWriterIndex - decrement;
             }
         } else {
+            /** 减小读标记位 */
             this.markedReaderIndex = markedReaderIndex - decrement;
+            /** 减小写标记位 */
             markedWriterIndex -= decrement;
         }
     }
 
-    // Called after a capacity reduction
     protected final void trimIndicesToCapacity(int newCapacity) {
         if (writerIndex() > newCapacity) {
             setIndex0(Math.min(readerIndex(), newCapacity), newCapacity);
         }
     }
 
+    /**
+     * 保证有足够写入minWritableBytes大小可写空间。若不够，则进行扩容
+     */
     @Override
     public ByteBuf ensureWritable(int minWritableBytes) {
+        /** 检查给定的参数是正数还是零minWritableBytes必须是正数 **/
         checkPositiveOrZero(minWritableBytes, "minWritableBytes");
         ensureWritable0(minWritableBytes);
         return this;
     }
 
+    /**
+     * 保证有足够写入minWritableBytes大小可写空间内部实现
+     */
     final void ensureWritable0(int minWritableBytes) {
+        /** 检查是否可访问 **/
         ensureAccessible();
+        /** 当前ByteBuf有足够写入minWritableBytes大小的空间，直接返回 **/
         if (minWritableBytes <= writableBytes()) {
             return;
         }
         final int writerIndex = writerIndex();
+        /**最大上限maxCapacity都无法满足写入minWritableBytes 抛出 IndexOutOfBoundsException 异常 **/
         if (checkBounds) {
             if (minWritableBytes > maxCapacity - writerIndex) {
                 throw new IndexOutOfBoundsException(String.format(
@@ -296,80 +429,219 @@ public abstract class AbstractByteBuf extends ByteBuf {
             }
         }
 
-        // Normalize the current capacity to the power of 2.
+        /** 计算新的容量。默认情况下，2 倍扩容，并且不超过最大容量上限 **/
         int minNewCapacity = writerIndex + minWritableBytes;
         int newCapacity = alloc().calculateNewCapacity(minNewCapacity, maxCapacity);
-
         int fastCapacity = writerIndex + maxFastWritableBytes();
-        // Grow by a smaller amount if it will avoid reallocation
         if (newCapacity > fastCapacity && minNewCapacity <= fastCapacity) {
             newCapacity = fastCapacity;
         }
 
-        // Adjust to the new capacity.
+        /**  扩容到新的容量大小。 **/
         capacity(newCapacity);
     }
 
     @Override
     public int ensureWritable(int minWritableBytes, boolean force) {
+        /** 检查是否可访问 **/
         ensureAccessible();
+        /** 检查给定的参数是正数还是零minWritableBytes必须是正数 **/
         checkPositiveOrZero(minWritableBytes, "minWritableBytes");
 
+        /** 当前ByteBuf有足够写入minWritableBytes大小的空间，直接返回 **/
         if (minWritableBytes <= writableBytes()) {
             return 0;
         }
 
+        /** 获取缓冲区允许的最大容量 **/
         final int maxCapacity = maxCapacity();
+        /** 返回写入位置 **/
         final int writerIndex = writerIndex();
+        /** 最大上限maxCapacity都无法满足写入minWritableBytes **/
         if (minWritableBytes > maxCapacity - writerIndex) {
+            /** 不强制设置，或者已经到达最大容量   **/
             if (!force || capacity() == maxCapacity) {
                 return 1;
             }
-
+            /** 设置为最大容量    **/
             capacity(maxCapacity);
             return 3;
         }
 
-        // Normalize the current capacity to the power of 2.
+        /** 计算新的容量。默认情况下，2 倍扩容，并且不超过最大容量上限。 **/
         int minNewCapacity = writerIndex + minWritableBytes;
         int newCapacity = alloc().calculateNewCapacity(minNewCapacity, maxCapacity);
-
         int fastCapacity = writerIndex + maxFastWritableBytes();
-        // Grow by a smaller amount if it will avoid reallocation
         if (newCapacity > fastCapacity && minNewCapacity <= fastCapacity) {
             newCapacity = fastCapacity;
         }
 
-        // Adjust to the new capacity.
+        /** 设置新的容量大小**/
         capacity(newCapacity);
         return 2;
     }
 
+    /**
+     * 设置字节序
+     */
     @Override
     public ByteBuf order(ByteOrder endianness) {
         if (endianness == order()) {
             return this;
         }
+        /** 如果字节序未修改，直接返回该 ByteBuf 对象。 **/
         if (endianness == null) {
             throw new NullPointerException("endianness");
         }
+        /** 如果字节序有修改，调用 #newSwappedByteBuf() 方法，TODO SwappedByteBuf **/
         return newSwappedByteBuf();
     }
 
     /**
-     * Creates a new {@link SwappedByteBuf} for this {@link ByteBuf} instance.
+     * 为此{@link ByteBuf}实例创建一个新的{@link SwappedByteBuf}。
      */
     protected SwappedByteBuf newSwappedByteBuf() {
         return new SwappedByteBuf(this);
     }
 
+    /**
+     * 获取Byte,读取位置不移动
+     */
     @Override
     public byte getByte(int index) {
+        /** 校验读取是否会超过容量 **/
         checkIndex(index);
+        /** 读取 Int 数据。这是一个抽象方法，由子类实现 **/
         return _getByte(index);
     }
 
+    /**
+     * 将此缓冲区的数据从指定的{@code index}写入dst
+     * 此方法不修改此缓冲区的{@code readerindex}或{@code writerindex}。
+     */
+    @Override
+    public ByteBuf getBytes(int index, byte[] dst) {
+        getBytes(index, dst, 0, dst.length);
+        return this;
+    }
+
+    /**
+     * 将此缓冲区的数据从指定的{@code index}写入dst
+     * 此方法不修改此缓冲区的{@code readerindex}或{@code writerindex}。
+     * 此方法修改dst缓冲区{@code writerindex
+     */
+    @Override
+    public ByteBuf getBytes(int index, ByteBuf dst) {
+        getBytes(index, dst, dst.writableBytes());
+        return this;
+    }
+
+    /**
+     * 将此缓冲区的数据从指定的{@code index}写入dst，设置写入字节大小length
+     * 此方法不修改此缓冲区的{@code readerindex}或{@code writerindex}。
+     * 此方法修改dst缓冲区{@code writerindex
+     */
+    @Override
+    public ByteBuf getBytes(int index, ByteBuf dst, int length) {
+        getBytes(index, dst, dst.writerIndex(), length);
+        dst.writerIndex(dst.writerIndex() + length);
+        return this;
+    }
+
+    /**
+     * 获取Byte,读取位置移动
+     */
+    @Override
+    public byte readByte() {
+        /** 校验读取是否会超过可读段 **/
+        checkReadableBytes0(1);
+        /** 获取原始读取位置 **/
+        int i = readerIndex;
+        /** 读取 Byte 数据 设置给b **/
+        byte b = _getByte(i);
+        /** 读取位置+1 **/
+        readerIndex = i + 1;
+        /** 返回b **/
+        return b;
+    }
+
     protected abstract byte _getByte(int index);
+
+
+    /**
+     * 在该缓冲区中的指定{@code index}处设置指定字节
+     * 此方法不修改此缓冲区的{@code readerindex}或{@code writerindex}。
+     */
+    @Override
+    public ByteBuf setByte(int index, int value) {
+        /** 校验写入是否会超过容量 **/
+        checkIndex(index);
+        /** 在指定设置 Byte 数据 **/
+        _setByte(index, value);
+        /** 返回当前对象 **/
+        return this;
+    }
+
+    protected abstract void _setByte(int index, int value);
+
+    /**
+     * 从指定{@code index}开始将指定源数组的数据传输到此缓冲区。
+     * 此方法不修改此缓冲区的{@code readerindex}或{@code writerindex}。
+     */
+    @Override
+    public ByteBuf setBytes(int index, byte[] src) {
+        setBytes(index, src, 0, src.length);
+        return this;
+    }
+
+    /**
+     * 从指定的@code index}开始将指定源缓冲区的数据传输到此缓冲区，直到源缓冲区变得不可读为止
+     * 此方法不修改当前ByteBuf对应readerIndex或writerIndex源缓冲器
+     * 此方法不修改源src readerIndex
+     */
+    @Override
+    public ByteBuf setBytes(int index, ByteBuf src) {
+        setBytes(index, src, src.readableBytes());
+        return this;
+    }
+
+    /**
+     * 从指定的@code index}开始将指定源缓冲区的数据传输到此缓冲区，传输数据长度为length
+     * 此方法不修改readerIndex或writerIndex源缓冲器
+     * 此方法修改源src readerIndex
+     */
+    @Override
+    public ByteBuf setBytes(int index, ByteBuf src, int length) {
+        /** 校验是否会超过容量 **/
+        checkIndex(index, length);
+        /** src不能为null **/
+        if (src == null) {
+            throw new NullPointerException("src");
+        }
+        /** 检查src可读取容量大于length **/
+        if (checkBounds) {
+            checkReadableBounds(src, length);
+        }
+        /** 从指定的@code index}开始将指定源缓冲区的数据传输到此缓冲区，传输数据长度为length **/
+        setBytes(index, src, src.readerIndex(), length);
+        /** 修改src readerIndex **/
+        src.readerIndex(src.readerIndex() + length);
+        return this;
+    }
+
+    /**
+     * 在当前{@code writerindex}处设置指定字节，并在此缓冲区中将{@code writerindex}增加{@code 1}。
+     * 此方法在写入空间不足时会尝试扩容
+     */
+    @Override
+    public ByteBuf writeByte(int value) {
+        /** 保证有足够写入minWritableBytes大小可写空间内部实现 **/
+        ensureWritable0(1);
+        /** 在writerIndex位置插入value，并移动writerIndex **/
+        _setByte(writerIndex++, value);
+        return this;
+    }
+
 
     @Override
     public boolean getBoolean(int index) {
@@ -498,24 +770,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return Double.longBitsToDouble(getLong(index));
     }
 
-    @Override
-    public ByteBuf getBytes(int index, byte[] dst) {
-        getBytes(index, dst, 0, dst.length);
-        return this;
-    }
 
-    @Override
-    public ByteBuf getBytes(int index, ByteBuf dst) {
-        getBytes(index, dst, dst.writableBytes());
-        return this;
-    }
-
-    @Override
-    public ByteBuf getBytes(int index, ByteBuf dst, int length) {
-        getBytes(index, dst, dst.writerIndex(), length);
-        dst.writerIndex(dst.writerIndex() + length);
-        return this;
-    }
 
     @Override
     public CharSequence getCharSequence(int index, int length, Charset charset) {
@@ -533,14 +788,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return sequence;
     }
 
-    @Override
-    public ByteBuf setByte(int index, int value) {
-        checkIndex(index);
-        _setByte(index, value);
-        return this;
-    }
 
-    protected abstract void _setByte(int index, int value);
 
     @Override
     public ByteBuf setBoolean(int index, boolean value) {
@@ -638,17 +886,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
-    @Override
-    public ByteBuf setBytes(int index, byte[] src) {
-        setBytes(index, src, 0, src.length);
-        return this;
-    }
 
-    @Override
-    public ByteBuf setBytes(int index, ByteBuf src) {
-        setBytes(index, src, src.readableBytes());
-        return this;
-    }
 
     private static void checkReadableBounds(final ByteBuf src, final int length) {
         if (length > src.readableBytes()) {
@@ -657,20 +895,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
     }
 
-    @Override
-    public ByteBuf setBytes(int index, ByteBuf src, int length) {
-        checkIndex(index, length);
-        if (src == null) {
-            throw new NullPointerException("src");
-        }
-        if (checkBounds) {
-            checkReadableBounds(src, length);
-        }
 
-        setBytes(index, src, src.readerIndex(), length);
-        src.readerIndex(src.readerIndex() + length);
-        return this;
-    }
 
     @Override
     public ByteBuf setZero(int index, int length) {
@@ -740,14 +965,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return bytes.length;
     }
 
-    @Override
-    public byte readByte() {
-        checkReadableBytes0(1);
-        int i = readerIndex;
-        byte b = _getByte(i);
-        readerIndex = i + 1;
-        return b;
-    }
+
 
     @Override
     public boolean readBoolean() {
@@ -994,12 +1212,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
-    @Override
-    public ByteBuf writeByte(int value) {
-        ensureWritable0(1);
-        _setByte(writerIndex++, value);
-        return this;
-    }
+
 
     @Override
     public ByteBuf writeShort(int value) {
@@ -1204,38 +1417,59 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return written;
     }
 
+    /**
+     * 拷贝可读部分的字节数组
+     */
     @Override
     public ByteBuf copy() {
         return copy(readerIndex, readableBytes());
     }
 
+    /**
+     * 返回共享此缓冲区的整个区域的缓冲区
+     */
     @Override
     public ByteBuf duplicate() {
         ensureAccessible();
         return new UnpooledDuplicatedByteBuf(this);
     }
 
+    /**
+     * 返回共享此缓冲区的整个区域的缓冲区，引用计数+1
+     */
     @Override
     public ByteBuf retainedDuplicate() {
         return duplicate().retain();
     }
 
+    /**
+     * 返回此缓冲区可读字节的片段。修改返回的缓冲区或此缓冲区的内容会影响彼此的内容
+     */
     @Override
     public ByteBuf slice() {
         return slice(readerIndex, readableBytes());
     }
 
+    /**
+     * 返回此缓冲区可读字节的片段。修改返回的缓冲区或此缓冲区的内容会影响彼此的内容，引用计数+1
+     */
     @Override
     public ByteBuf retainedSlice() {
         return slice().retain();
     }
 
+    /**
+     * 返回从指定的@code index}开始将指定缓冲区的长度为length数据的片段。修改返回的缓冲区或此缓冲区的内容会影响彼此的内容
+     */
     @Override
     public ByteBuf slice(int index, int length) {
         ensureAccessible();
         return new UnpooledSlicedByteBuf(this, index, length);
     }
 
+    /**
+     * 返回从指定的@code index}开始将指定缓冲区的长度为length数据的片段。修改返回的缓冲区或此缓冲区的内容会影响彼此的内容，引用计数+1
+     */
     @Override
     public ByteBuf retainedSlice(int index, int length) {
         return slice(index, length).retain();
@@ -1429,10 +1663,24 @@ public abstract class AbstractByteBuf extends ByteBuf {
     }
 
     protected final void checkIndex(int index, int fieldLength) {
+        /** 校验是否可访问 **/
         ensureAccessible();
+        /** 校验是否会超过容量 **/
         checkIndex0(index, fieldLength);
     }
 
+    /**
+     * 校验是否会超过容量
+     */
+    final void checkIndex0(int index, int fieldLength) {
+        if (checkBounds) {
+            checkRangeBounds("index", index, fieldLength, capacity());
+        }
+    }
+
+    /**
+     * 校验是否会超过容量
+     */
     private static void checkRangeBounds(final String indexName, final int index,
             final int fieldLength, final int capacity) {
         if (isOutOfBounds(index, fieldLength, capacity)) {
@@ -1441,11 +1689,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
     }
 
-    final void checkIndex0(int index, int fieldLength) {
-        if (checkBounds) {
-            checkRangeBounds("index", index, fieldLength, capacity());
-        }
-    }
+
 
     protected final void checkSrcIndex(int index, int length, int srcIndex, int srcCapacity) {
         checkIndex(index, length);
@@ -1509,10 +1753,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
     }
 
-    final void setIndex0(int readerIndex, int writerIndex) {
-        this.readerIndex = readerIndex;
-        this.writerIndex = writerIndex;
-    }
+
 
     final void discardMarks() {
         markedReaderIndex = markedWriterIndex = 0;

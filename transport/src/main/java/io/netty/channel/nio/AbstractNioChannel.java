@@ -107,19 +107,30 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         }
     }
 
+    /**
+     * Java原生NIO的Channel对象是否打开
+     */
     @Override
     public boolean isOpen() {
         return ch.isOpen();
     }
 
+    /**
+     * 返回Java原生NIO的Channel对象是否打开
+     */
+    protected SelectableChannel javaChannel() {
+        return ch;
+    }
+
+
+    /**
+     * 返回Unsafe 对象
+     */
     @Override
     public NioUnsafe unsafe() {
         return (NioUnsafe) super.unsafe();
     }
 
-    protected SelectableChannel javaChannel() {
-        return ch;
-    }
 
     @Override
     public NioEventLoop eventLoop() {
@@ -127,7 +138,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     }
 
     /**
-     * Return the current {@link SelectionKey}
+     * 返回当前的{@link SelectionKey}
      */
     protected SelectionKey selectionKey() {
         assert selectionKey != null;
@@ -224,6 +235,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
     protected abstract class AbstractNioUnsafe extends AbstractUnsafe implements NioUnsafe {
 
+        /**
+         * 移除对“读”事件的感兴趣( 对于 NioServerSocketChannel 的 “读“事件就是 SelectionKey.OP_ACCEPT )
+         */
         protected final void removeReadOp() {
             SelectionKey key = selectionKey();
             if (!key.isValid()) {

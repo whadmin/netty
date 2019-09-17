@@ -248,28 +248,22 @@ import java.nio.charset.UnsupportedCharsetException;
 public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
 
     /**
-     * Returns the number of bytes (octets) this buffer can contain.
+     * 返回此缓冲区可包含的字节数（八位字节）。
      */
     public abstract int capacity();
 
     /**
-     * Adjusts the capacity of this buffer.  If the {@code newCapacity} is less than the current
-     * capacity, the content of this buffer is truncated.  If the {@code newCapacity} is greater
-     * than the current capacity, the buffer is appended with unspecified data whose length is
-     * {@code (newCapacity - currentCapacity)}.
-     *
-     * @throws IllegalArgumentException if the {@code newCapacity} is greater than {@link #maxCapacity()}
+     * 调整此缓冲区的容量。
      */
     public abstract ByteBuf capacity(int newCapacity);
 
     /**
-     * Returns the maximum allowed capacity of this buffer. This value provides an upper
-     * bound on {@link #capacity()}.
+     * 返回此缓冲区允许的最大容量。
      */
     public abstract int maxCapacity();
 
     /**
-     * Returns the {@link ByteBufAllocator} which created this buffer.
+     * 分配器，用于创建 ByteBuf 对象。
      */
     public abstract ByteBufAllocator alloc();
 
@@ -298,30 +292,27 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
     public abstract ByteBuf order(ByteOrder endianness);
 
     /**
-     * Return the underlying buffer instance if this buffer is a wrapper of another buffer.
-     *
-     * @return {@code null} if this buffer is not a wrapper
+     * 获得被包装( wrap )的 ByteBuf 对象。
      */
     public abstract ByteBuf unwrap();
 
     /**
-     * Returns {@code true} if and only if this buffer is backed by an
-     * NIO direct buffer.
+     * 是否 NIO Direct Buffer
      */
     public abstract boolean isDirect();
 
     /**
-     * Returns {@code true} if and only if this buffer is read-only.
+     * 当且仅当此缓冲区是只读时，才返回{@code true}。
      */
     public abstract boolean isReadOnly();
 
     /**
-     * Returns a read-only version of this buffer.
+     * 返回此缓冲区的只读版本。
      */
     public abstract ByteBuf asReadOnly();
 
     /**
-     * Returns the {@code readerIndex} of this buffer.
+     * 返回此缓冲区的{@code readerIndex}。
      */
     public abstract int readerIndex();
 

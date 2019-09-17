@@ -836,35 +836,50 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     private void write(Object msg, boolean flush, ChannelPromise promise) {
+        /** 消息( 数据 )为空，抛出异常 **/
         ObjectUtil.checkNotNull(msg, "msg");
         try {
+            /** 判断是否为合法的 Promise 对象 **/
             if (isNotValidPromise(promise, true)) {
+                /**  释放消息( 数据 )相关的资源 **/
                 ReferenceCountUtil.release(msg);
-                // cancelled
+                /**  返回 **/
                 return;
             }
         } catch (RuntimeException e) {
+            /**  若发生异常，释放消息( 数据 )相关的资源 **/
             ReferenceCountUtil.release(msg);
+            /**  抛出该异常 **/
             throw e;
         }
 
+        /** 获得下一个 Outbound 节点 **/
         final AbstractChannelHandlerContext next = findContextOutbound(flush ?
                 (MASK_WRITE | MASK_FLUSH) : MASK_WRITE);
+
+        /** 记录 Record 记录  **/
         final Object m = pipeline.touch(msg, next);
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            /** 执行 writeAndFlush 事件到下一个节点 **/
             if (flush) {
                 next.invokeWriteAndFlush(m, promise);
-            } else {
+            }
+            /** 执行 write 事件到下一个节点  **/
+            else {
                 next.invokeWrite(m, promise);
             }
         } else {
             final AbstractWriteTask task;
+            /** 创建 writeAndFlush 任务  **/
             if (flush) {
                 task = WriteAndFlushTask.newInstance(next, m, promise);
-            }  else {
+            }
+            /** 创建 write 任务 **/
+            else {
                 task = WriteTask.newInstance(next, m, promise);
             }
+            /** 提交到 EventLoop 的线程中，执行该任务 **/
             if (!safeExecute(executor, task, promise, m)) {
                 // We failed to submit the AbstractWriteTask. We need to cancel it so we decrement the pending bytes
                 // and put it back in the Recycler for re-use later.

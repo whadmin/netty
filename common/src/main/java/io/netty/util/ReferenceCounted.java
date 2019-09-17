@@ -16,62 +16,43 @@
 package io.netty.util;
 
 /**
- * A reference-counted object that requires explicit deallocation.
- * <p>
- * When a new {@link ReferenceCounted} is instantiated, it starts with the reference count of {@code 1}.
- * {@link #retain()} increases the reference count, and {@link #release()} decreases the reference count.
- * If the reference count is decreased to {@code 0}, the object will be deallocated explicitly, and accessing
- * the deallocated object will usually result in an access violation.
- * </p>
- * <p>
- * If an object that implements {@link ReferenceCounted} is a container of other objects that implement
- * {@link ReferenceCounted}, the contained objects will also be released via {@link #release()} when the container's
- * reference count becomes 0.
- * </p>
+ * 当new ReferenceCounted实例化时，它以引用计数开始1。 retain()增加引用计数，
+ * 并release()减少引用计数。如果引用计数减少到0，则将显式释放对象
  */
 public interface ReferenceCounted {
     /**
-     * Returns the reference count of this object.  If {@code 0}, it means this object has been deallocated.
+     * 返回此对象的引用计数。如果0，则表示此对象已被释放。
      */
     int refCnt();
 
     /**
-     * Increases the reference count by {@code 1}.
+     * 增加引用计数1。
      */
     ReferenceCounted retain();
 
     /**
-     * Increases the reference count by the specified {@code increment}.
+     * 按指定的方式增加引用计数increment。
      */
     ReferenceCounted retain(int increment);
 
     /**
-     * Records the current access location of this object for debugging purposes.
-     * If this object is determined to be leaked, the information recorded by this operation will be provided to you
-     * via {@link ResourceLeakDetector}.  This method is a shortcut to {@link #touch(Object) touch(null)}.
+     * 记录此对象的当前访问位置以进行调试。
+     * 如果确定此对象泄漏，则此操作记录的信息将通过{@link resourcelakdetector}提供给您。此方法是{@link touch（object）touch（null）}的快捷方式。
      */
     ReferenceCounted touch();
 
     /**
-     * Records the current access location of this object with an additional arbitrary information for debugging
-     * purposes.  If this object is determined to be leaked, the information recorded by this operation will be
-     * provided to you via {@link ResourceLeakDetector}.
+     * 记录此对象的当前访问位置以及用于调试的附加任意信息。如果确定此对象泄漏，则此操作记录的信息将通过{@link resourcelakdetector}提供给您。
      */
     ReferenceCounted touch(Object hint);
 
     /**
-     * Decreases the reference count by {@code 1} and deallocates this object if the reference count reaches at
-     * {@code 0}.
-     *
-     * @return {@code true} if and only if the reference count became {@code 0} and this object has been deallocated
+     * 如果引用计数达到{@code 0}，则将引用计数减少{@code 1}并释放此对象。
      */
     boolean release();
 
     /**
-     * Decreases the reference count by the specified {@code decrement} and deallocates this object if the reference
-     * count reaches at {@code 0}.
-     *
-     * @return {@code true} if and only if the reference count became {@code 0} and this object has been deallocated
+     * 如果引用计数达到{@code 0}，则按指定的{@code减量}减少引用计数并释放此对象。
      */
     boolean release(int decrement);
 }
