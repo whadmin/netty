@@ -23,13 +23,11 @@ import io.netty.util.internal.UnstableApi;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 /**
- * Allocates a new receive buffer whose capacity is probably large enough to read all inbound data and small enough
- * not to waste its space.
+ * 分配一个新的接收缓冲区，其容量可能足以读取所有入站数据，并且足够小，不会浪费其空间。
  */
 public interface RecvByteBufAllocator {
     /**
-     * Creates a new handle.  The handle provides the actual operations and keeps the internal information which is
-     * required for predicting an optimal buffer capacity.
+     * 创建一个新的处理器，该处理器提供一个真实的操作并持有内部信息，该信息是用于预测一个最优缓冲区大小的必要信息。
      */
     Handle newHandle();
 
@@ -39,8 +37,7 @@ public interface RecvByteBufAllocator {
     @Deprecated
     interface Handle {
         /**
-         * Creates a new receive buffer whose capacity is probably large enough to read all inbound data and small
-         * enough not to waste its space.
+         * 创建一个新的接收缓冲区，该缓冲区的大小可能足够大去读取所有的数据并且足够小以至于不会浪费它的空间。
          */
         ByteBuf allocate(ByteBufAllocator alloc);
 

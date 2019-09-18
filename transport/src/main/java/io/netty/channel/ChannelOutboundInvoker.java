@@ -91,9 +91,7 @@ public interface ChannelOutboundInvoker {
 
 
     /**
-     * 从Channel缓冲区读取数据，
-     * 在读取数据时触发ChannelInboundHandler.channelRead(ChannelHandlerContext, Object)
-     * 在读取数据完毕时触发ChannelInboundHandler.channelReadComplete(ChannelHandlerContext, Object)
+     * Channel缓冲区读取数据，负责Channel向注册EventLoop注册自己感兴趣的事件
      */
     ChannelOutboundInvoker read();
 

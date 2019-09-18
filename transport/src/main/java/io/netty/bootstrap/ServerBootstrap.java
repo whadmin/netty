@@ -137,20 +137,20 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 childOptions.entrySet().toArray(newOptionArray(0));
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = childAttrs.entrySet().toArray(newAttrArray(0));
 
-        // 添加 ChannelInitializer 对象到 pipeline 中，
-        // ChannelInitializer initChannel 会在触发
+        /**  添加 ChannelInitializer 对象到 pipeline 中，**/
+        /**  ChannelInitializer是一个特殊的{@link ChannelInboundHandler}，它提供了initChannel模板方法，在Channel注册到{@link EventLoop}后触发。**/
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {
                 final ChannelPipeline pipeline = ch.pipeline();
 
-                // 添加配置的 ChannelHandler 到 pipeline 中
+                /** 添加配置的 ChannelHandler 到 pipeline 中 **/
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
                     pipeline.addLast(handler);
                 }
-                //设置ServerBootstrapAcceptor 到 pipeline 中
-                // ServerBootstrapAcceptor 负责处理连接请求创建 SocketChannel并注册到选择器
+                /** 设置ServerBootstrapAcceptor 到 pipeline 中 **/
+                /** ServerBootstrapAcceptor 负责处理连接请求创建 SocketChannel并注册到选择器 **/
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
@@ -245,6 +245,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             }
         }
 
+        /** 强制关闭客户端的 NioSocketChannel 连接。  **/
         private static void forceClose(Channel child, Throwable t) {
             child.unsafe().closeForcibly();
             logger.warn("Failed to register an accepted channel: {}", child, t);

@@ -28,7 +28,7 @@ public final class SimpleServer {
                         @Override
                         public void initChannel(SocketChannel ch) throws Exception {
                             ChannelPipeline p = ch.pipeline();
-                            p.addLast(new SimpleServerHandler());
+                            p.addLast(new EchoServerHandler());
                         }
                     });
             /** 绑定到指定端口 **/

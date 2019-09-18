@@ -31,6 +31,7 @@ import java.net.SocketAddress;
  */
 public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparable<Channel> {
 
+    //==============获取子组件相关==============
     /**
      * 返回ChannelId
      */
@@ -50,6 +51,23 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      * 返回  Channel 配置参数
      */
     ChannelConfig config();
+
+    /**
+     * 返回 ByteBuf 分配器
+     */
+    ByteBufAllocator alloc();
+
+    /**
+     * 返回 Unsafe 对象
+     */
+    Unsafe unsafe();
+
+    /**
+     * 返回 ChannelPipeline 对象，用于处理 Inbound 和 Outbound 事件的处理
+     */
+    ChannelPipeline pipeline();
+
+    //==============状态相关相关==============
 
     /**
      * Channel 是否打开。
@@ -72,8 +90,11 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      */
     boolean isActive();
 
+
+    //==============配置相关==============
+
     /**
-     * Return the {@link ChannelMetadata} of the {@link Channel} which describe the nature of the {@link Channel}.
+     * 返回{@link Channel}的{@link ChannelMetadata}，其中描述了{@link Channel}的性质。
      */
     ChannelMetadata metadata();
 
@@ -89,36 +110,26 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
 
 
 
+    //==============写缓存相关==============
     /**
-     * Channel 是否可写
+     * Channel 的写缓存区 outbound 非 null 且可写时，返回 true
      */
     boolean isWritable();
 
     /**
-     * 获得距离不可写还有多少字节数
+     * Channel 的写缓存区 outbound 距离不可写还有多少字节数
      */
     long bytesBeforeUnwritable();
 
     /**
-     * 获得距离可写还要多少字节数
+     * Channel 的写缓存区 outbound 距离可写还要多少字节数
      */
     long bytesBeforeWritable();
 
-    /**
-     * 返回 Unsafe 对象
-     */
-    Unsafe unsafe();
 
     /**
-     * 返回 ChannelPipeline 对象，用于处理 Inbound 和 Outbound 事件的处理
+     * 读取操作，其内部负责将Channel感兴趣的事件注册到EventLoop中
      */
-    ChannelPipeline pipeline();
-
-    /**
-     * 返回 ByteBuf 分配器
-     */
-    ByteBufAllocator alloc();
-
     @Override
     Channel read();
 
@@ -149,29 +160,22 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
         SocketAddress remoteAddress();
 
         /**
-         * Register the {@link Channel} of the {@link ChannelPromise} and notify
-         * the {@link ChannelFuture} once the registration was complete.
+         * 将Channel注册到指定EventLoop，ChannelPromise负责在完成后通知
          */
         void register(EventLoop eventLoop, ChannelPromise promise);
 
         /**
-         * Bind the {@link SocketAddress} to the {@link Channel} of the {@link ChannelPromise} and notify
-         * it once its done.
+         * 将SocketAddress绑定到Channel，ChannelPromise负责在完成后通知
          */
         void bind(SocketAddress localAddress, ChannelPromise promise);
 
         /**
-         * Connect the {@link Channel} of the given {@link ChannelFuture} with the given remote {@link SocketAddress}.
-         * If a specific local {@link SocketAddress} should be used it need to be given as argument. Otherwise just
-         * pass {@code null} to it.
-         *
-         * The {@link ChannelPromise} will get notified once the connect operation was complete.
+         * 将Channel与给定的远程{@link remoteAddress}地址进行连接，ChannelPromise负责在完成后通知
          */
         void connect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise);
 
         /**
-         * Disconnect the {@link Channel} of the {@link ChannelFuture} and notify the {@link ChannelPromise} once the
-         * operation was complete.
+         * Channel断开连接，ChannelPromise负责在完成后通知
          */
         void disconnect(ChannelPromise promise);
 
@@ -186,36 +190,32 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
         void closeForcibly();
 
         /**
-         * Deregister the {@link Channel} of the {@link ChannelPromise} from {@link EventLoop} and notify the
-         * {@link ChannelPromise} once the operation was complete.
+         * 将Channel从指定EventLoop注销，ChannelPromise负责在完成后通知
          */
         void deregister(ChannelPromise promise);
 
         /**
-         * Schedules a read operation that fills the inbound buffer of the first {@link ChannelInboundHandler} in the
-         * {@link ChannelPipeline}.  If there's already a pending read operation, this method does nothing.
+         * 开始一个读取操作，其内部负责将Channel感兴趣的事件注册到EventLoop中
          */
         void beginRead();
 
         /**
-         * Schedules a write operation.
+         * 写操作
          */
         void write(Object msg, ChannelPromise promise);
 
         /**
-         * Flush out all write operations scheduled via {@link #write(Object, ChannelPromise)}.
+         * 刷新
          */
         void flush();
 
         /**
-         * Return a special ChannelPromise which can be reused and passed to the operations in {@link Unsafe}.
-         * It will never be notified of a success or error and so is only a placeholder for operations
-         * that take a {@link ChannelPromise} as argument but for which you not want to get notified.
+         * 返回一个可以被重用不进行通知的 Promise 对象
          */
         ChannelPromise voidPromise();
 
         /**
-         * Returns the {@link ChannelOutboundBuffer} of the {@link Channel} where the pending write requests are stored.
+         * 返回 写入缓存队列
          */
         ChannelOutboundBuffer outboundBuffer();
     }

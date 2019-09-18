@@ -423,7 +423,6 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
     @Override
     protected void doBeginRead() throws Exception {
-        // Channel.read() or ChannelHandlerContext.read() was called
         final SelectionKey selectionKey = this.selectionKey;
         if (!selectionKey.isValid()) {
             return;

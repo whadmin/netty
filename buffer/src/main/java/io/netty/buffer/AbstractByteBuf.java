@@ -1356,8 +1356,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public int writeBytes(ScatteringByteChannel in, int length) throws IOException {
+        /** 保证有足够写入minWritableBytes大小可写空间。若不够，则进行扩容 **/
         ensureWritable(length);
+        /** 将ScatteringByteChannel数据写入到字节缓冲区中，writerIndex位置开始写入，返回写入字节数量 **/
         int writtenBytes = setBytes(writerIndex, in, length);
+        /** writerIndex 移动 writtenBytes 位置字节**/
         if (writtenBytes > 0) {
             writerIndex += writtenBytes;
         }

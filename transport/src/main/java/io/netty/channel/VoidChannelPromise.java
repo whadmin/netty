@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 public final class VoidChannelPromise extends AbstractFuture<Void> implements ChannelPromise {
 
     private final Channel channel;
+
     // Will be null if we should not propagate exceptions through the pipeline on failure case.
     private final ChannelFutureListener fireExceptionListener;
 

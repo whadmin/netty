@@ -113,15 +113,22 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         private void handleReadException(ChannelPipeline pipeline, ByteBuf byteBuf, Throwable cause, boolean close,
                 RecvByteBufAllocator.Handle allocHandle) {
             if (byteBuf != null) {
+                /** 如果byteBuf有可以读取数据 **/
                 if (byteBuf.isReadable()) {
+                    /** 标识 readPending **/
                     readPending = false;
+                    /**  触发 Channel read 事件传递给 pipeline 中。 **/
                     pipeline.fireChannelRead(byteBuf);
                 } else {
+                    /**  释放 ByteBuf 对象 **/
                     byteBuf.release();
                 }
             }
+            /** 设置allocHandle读取完成 **/
             allocHandle.readComplete();
+            /** 触发 Channel readComplete 事件传递给pipeline 中。 **/
             pipeline.fireChannelReadComplete();
+            /** 触发 exceptionCaught 事件传递给 pipeline 中。 **/
             pipeline.fireExceptionCaught(cause);
             if (close || cause instanceof IOException) {
                 closeOnRead(pipeline);
@@ -131,7 +138,8 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         @Override
         public final void read() {
             final ChannelConfig config = config();
-            /** 若 inputClosedSeenErrorOnRead = true ，移除对 SelectionKey.OP_READ 事件的感兴趣  **/
+            /** 若 inputClosedSeenErrorOnRead = true ，移除对 SelectionKey.OP_READ 事件的感兴趣
+             *  inputClosedSeenErrorOnRead 服务端处理客户端主动关闭连接后的标识 **/
             if (shouldBreakReadReady(config)) {
                 clearReadPending();
                 return;
@@ -150,41 +158,54 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 do {
                     /** 申请 ByteBuf 对象  **/
                     byteBuf = allocHandle.allocate(allocator);
+                    /** doReadBytes 读取数据写入buf，返回值表示读取数据大小，如果返回值小于 0 时，标识连接被关闭*/
+                    /** lastBytesRead 设置最后一次读取动作读取字节数，和总读取字节数 **/
                     allocHandle.lastBytesRead(doReadBytes(byteBuf));
+                    /** 最后一次读取动作读取字节数未读取到数据 **/
                     if (allocHandle.lastBytesRead() <= 0) {
-                        // nothing was read. release the buffer.
+                        /** 释放 ByteBuf 对象  **/
                         byteBuf.release();
+                        /**  置空 ByteBuf 对象  **/
                         byteBuf = null;
+                        /**  如果最后读取的字节为小于 0 ，说明对端已经关闭  **/
                         close = allocHandle.lastBytesRead() < 0;
+                        /** 如果Channel已经关闭，设置readPending标识为false **/
                         if (close) {
-                            // There is nothing left to read as we received an EOF.
                             readPending = false;
                         }
+                        /**  结束循环  **/
                         break;
                     }
-
+                    /** 读取消息数量 + 1  **/
                     allocHandle.incMessagesRead(1);
                     readPending = false;
+                    /** 触发 Channel read 事件 传递给pipeline **/
                     pipeline.fireChannelRead(byteBuf);
+                    /** 置空 ByteBuf 对象 **/
                     byteBuf = null;
-                } while (allocHandle.continueReading());
+                }
+                /** 判断是否循环是否继续，读取新的数据 **/
+                while (allocHandle.continueReading());
 
+                /**  allocHandle读取完成。 **/
                 allocHandle.readComplete();
+
+                /**  触发 Channel readComplete 传递给pipeline  **/
                 pipeline.fireChannelReadComplete();
 
+                /** 如果close标识为true关闭客户端的连接 **/
                 if (close) {
                     closeOnRead(pipeline);
                 }
             } catch (Throwable t) {
+                /** 处理异常 **/
                 handleReadException(pipeline, byteBuf, t, close, allocHandle);
             } finally {
-                // Check if there is a readPending which was not processed yet.
-                // This could be for two reasons:
-                // * The user called Channel.read() or ChannelHandlerContext.read() in channelRead(...) method
-                // * The user called Channel.read() or ChannelHandlerContext.read() in channelReadComplete(...) method
-                //
-                // See https://github.com/netty/netty/issues/2254
+                /**  检查是否有尚未处理的 byteBuf。如果不存在且config配置不是自动读取，则移除对“读”事件的感兴趣 **/
                 if (!readPending && !config.isAutoRead()) {
+                    /** 移除对“读”事件的感兴趣
+                     *  对于 NioServerSocketChannel 的 “读“事件就是 SelectionKey.OP_ACCEPT
+                     *  对于 NioSocketChannel 的 “读“事件就是 SelectionKey.OP_READ **/
                     removeReadOp();
                 }
             }

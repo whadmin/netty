@@ -754,7 +754,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // SelectionKey.OP_READ 或 SelectionKey.OP_ACCEPT 就绪
             // readyOps == 0 是对 JDK Bug 的处理，防止空的死循环
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
-                // 向 Channel 读取数据
+                // 使用 unsafe 读取数据,unsafe 属于 Channel 内部子组件 不同的 Channel 类对应不同的 Unsafe 实现类 对于不同unsafe实现读取含义是不同的
+                // 对于 NioServerSocketChannel ，Unsafe 的实现类为 NioMessageUnsafe，用来处理建立连接  OP_ACCEPT
+                // 对于 NioSocketChannel，Unsafe 的实现类为 NioSocketChannelUnsafe，用来处理读取数据  OP_READ
                 unsafe.read();
             }
         } catch (CancelledKeyException ignored) {

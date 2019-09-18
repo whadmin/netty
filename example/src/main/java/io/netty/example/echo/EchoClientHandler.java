@@ -20,6 +20,8 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * Handler implementation for the echo client.  It initiates the ping-pong
  * traffic between the echo client and server by sending the first message to
@@ -34,14 +36,13 @@ public class EchoClientHandler extends ChannelInboundHandlerAdapter {
      */
     public EchoClientHandler() {
         firstMessage = Unpooled.buffer(EchoClient.SIZE);
-        for (int i = 0; i < firstMessage.capacity(); i ++) {
-            firstMessage.writeByte((byte) i);
-        }
+        firstMessage.writeBytes("hello server".getBytes());
     }
 
     @Override
-    public void channelActive(ChannelHandlerContext ctx) {
-        ctx.writeAndFlush(firstMessage);
+    public void channelActive(ChannelHandlerContext ctx) throws InterruptedException {
+        ctx.write(firstMessage);
+        ctx.flush();
     }
 
     @Override

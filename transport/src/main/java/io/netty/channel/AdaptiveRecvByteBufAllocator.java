@@ -106,10 +106,6 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 
         @Override
         public void lastBytesRead(int bytes) {
-            // If we read as much as we asked for we should check if we need to ramp up the size of our next guess.
-            // This helps adjust more quickly when large amounts of data is pending and can avoid going back to
-            // the selector to check for more data. Going back to the selector can add significant latency for large
-            // data transfers.
             if (bytes == attemptedBytesRead()) {
                 record(bytes);
             }

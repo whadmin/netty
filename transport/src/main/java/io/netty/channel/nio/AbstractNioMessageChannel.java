@@ -75,19 +75,19 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                 try {
                     /** while 循环 “读取”新的客户端连接连入 **/
                     do {
-                        /** 读取客户端的连接到方法参数 buf 中，返回读取连接个数 **/
+                        /** 读取客户端的连接NioSocketChannel放入readBuf列表中，并返回列表中NioSocketChannel对象个数 **/
                         int localRead = doReadMessages(readBuf);
-                        /** 无可读取的客户端的连接，结束 **/
+                        /** localRead==0 表示没有获取到客户端的连接NioSocketChannel对象，结束 **/
                         if (localRead == 0) {
                             break;
                         }
-                        /** 读取客户端的连接发生异常  **/
+                        /** localRead < 0 读取客户端的连接发生异常 NioServerSocketChannel实现doReadMessages不存在此清空，可忽略 **/
                         if (localRead < 0) {
                             /**  标记关闭  **/
                             closed = true;
                             break;
                         }
-                        /** 读取消息( 客户端 )数量 + localRead  AdaptiveRecvByteBufAllocator **/
+                        /** 读取消息数量 + localRead  Nio实现类为MaxMessageHandle **/
                         allocHandle.incMessagesRead(localRead);
                     }
                     /** 判断是否循环是否继续，读取( 接受 )新的客户端连接 **/
@@ -97,40 +97,45 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                     exception = t;
                 }
 
-                /**  循环 readBuf 数组，触发 Channel read 事件到 pipeline 中。  **/
+                /**  获取readBuf列表中获得 连接NioSocketChannel 对象的数量  **/
                 int size = readBuf.size();
+                /**  遍历readBuf列表，触发 Read 事件，对于NioServerSocketChannel 默认pipeline处理连接请求ChannelHannel链表如下
+                 *   HeadContext -->  ServerBootstrapAcceptor  --> tailContext
+                 * **/
                 for (int i = 0; i < size; i ++) {
                     readPending = false;
                     pipeline.fireChannelRead(readBuf.get(i));
                 }
                 /**   清空 readBuf 数组 **/
                 readBuf.clear();
-                /**  读取完成  **/
+                /**  设置allocHandle 读取完成  **/
                 allocHandle.readComplete();
-                /** 触发 Channel readComplete 事件到 pipeline 中。 **/
+                /**   触发 Channel ReadComplete 事件传递给 pipeline 。 **/
                 pipeline.fireChannelReadComplete();
 
-                /**  发生异常  **/
+                /**  判断是否发生异常  **/
                 if (exception != null) {
                     /** 判断是否要关闭 **/
                     closed = closeOnReadError(exception);
-                    /** 触发 exceptionCaught 事件到 pipeline 中。 **/
+                    /** 触发 exceptionCaught 事件传递给 pipeline 中。 **/
                     pipeline.fireExceptionCaught(exception);
                 }
                 /** 判断是否要关闭 **/
                 if (closed) {
+                    /** 标识读取关闭,设置后调用doBeginRead() 会直接返回，不在做处理**/
                     inputShutdown = true;
+                    /** 如果SelectableChannel 没有关闭 **/
                     if (isOpen()) {
+                        /** 关闭Channel **/
                         close(voidPromise());
                     }
                 }
             } finally {
-                // 检查是否有尚未处理的readPending。 ,
-                // 这可能有两个原因：
-                // * 用户在channelRead（...）方法中调用Channel.read（）或ChannelHandlerContext.read（）
-                // * 用户在channelReadComplete（...）方法中调用Channel.read（）或ChannelHandlerContext.read（）
-                // See https://github.com/netty/netty/issues/2254
+                /**  检查是否有尚未处理的 byteBuf。如果不存在且config配置不是自动读取，则移除对“读”事件的感兴趣 **/
                 if (!readPending && !config.isAutoRead()) {
+                    /** 移除对“读”事件的感兴趣
+                     *  对于 NioServerSocketChannel 的 “读“事件就是 SelectionKey.OP_ACCEPT
+                     *  对于 NioSocketChannel 的 “读“事件就是 SelectionKey.OP_READ **/
                     removeReadOp();
                 }
             }
@@ -203,7 +208,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
     }
 
     /**
-     * 将消息读入给定数组并返回读取的数量。
+     * 读取客户端的连接NioSocketChannel放入readBuf列表中
      */
     protected abstract int doReadMessages(List<Object> buf) throws Exception;
 

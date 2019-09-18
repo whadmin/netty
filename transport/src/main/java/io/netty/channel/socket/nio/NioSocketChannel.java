@@ -342,11 +342,11 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
     @Override
     protected int doReadBytes(ByteBuf byteBuf) throws Exception {
-        // 获得 RecvByteBufAllocator.Handle 对象
+        /** 获得 RecvByteBufAllocator.Handle 对象 **/
         final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
-        // 设置最大可读取字节数量。因为 ByteBuf 对象目前最大可写入的大小为 ByteBuf#writableBytes() 的长度。
+        /** 设置最大可读取字节数量。因为 ByteBuf 对象目前最大可写入的大小为 ByteBuf#writableBytes() 的长度。 **/
         allocHandle.attemptedBytesRead(byteBuf.writableBytes());
-        // 读取数据到 ByteBuf 对象中。因为 ByteBuf 有多种实现，我们以默认的 PooledUnsafeDirectByteBuf 举例子
+        /**  读取数据到 ByteBuf 中 **/
         return byteBuf.writeBytes(javaChannel(), allocHandle.attemptedBytesRead());
     }
 
@@ -444,20 +444,21 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     }
 
     private final class NioSocketChannelUnsafe extends NioByteUnsafe {
+
+        /**
+         * 准备关闭{@link Channel}
+         * 如果此方法返回一个Executor，则必须使用Executor，并提交任务，任务工作是调用abstractchannel.doclose（）关闭Channel
+         * 如果此方法返回一个null，则调用方线程调用AbstractChannel.docLose（）关闭Channel
+         */
         @Override
         protected Executor prepareToClose() {
             try {
                 if (javaChannel().isOpen() && config().getSoLinger() > 0) {
-                    // We need to cancel this key of the channel so we may not end up in a eventloop spin
-                    // because we try to read or write until the actual close happens which may be later due
-                    // SO_LINGER handling.
-                    // See https://github.com/netty/netty/issues/4449
+                    /** 取消这个Channel主导EventLoop中的selectionKey **/
                     doDeregister();
                     return GlobalEventExecutor.INSTANCE;
                 }
             } catch (Throwable ignore) {
-                // Ignore the error as the underlying channel may be closed in the meantime and so
-                // getSoLinger() may produce an exception. In this case we just return null.
                 // See https://github.com/netty/netty/issues/4449
             }
             return null;

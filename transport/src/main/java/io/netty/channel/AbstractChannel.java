@@ -124,53 +124,24 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
 
     /**
-     * 返回一个新的{@link DefaultChannelId}实例
+     * 创建一个新{@link DefaultChannelId}实例并返回
      */
     protected ChannelId newId() {
         return DefaultChannelId.newInstance();
     }
 
     /**
-     * 返回一个新的{@link DefaultChannelPipeline}实例。
+     * 创建一个新{@link DefaultChannelPipeline}实例并返回
      */
     protected DefaultChannelPipeline newChannelPipeline() {
         return new DefaultChannelPipeline(this);
     }
 
 
-    /**
-     * 返回ChannelId
-     */
+    //==============获取子组件相关==============
     @Override
     public final ChannelId id() {
         return id;
-    }
-
-
-    /**
-     * Channel 是否可写
-     */
-    @Override
-    public boolean isWritable() {
-        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
-        //当 Channel 的写缓存区 outbound 非 null 且可写时，返回 true
-        return buf != null && buf.isWritable();
-    }
-
-    @Override
-    public long bytesBeforeUnwritable() {
-        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
-        // isWritable() is currently assuming if there is no outboundBuffer then the channel is not writable.
-        // We should be consistent with that here.
-        return buf != null ? buf.bytesBeforeUnwritable() : 0;
-    }
-
-    @Override
-    public long bytesBeforeWritable() {
-        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
-        // isWritable() is currently assuming if there is no outboundBuffer then the channel is not writable.
-        // We should be consistent with that here.
-        return buf != null ? buf.bytesBeforeWritable() : Long.MAX_VALUE;
     }
 
     @Override
@@ -198,6 +169,50 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     }
 
     @Override
+    public Unsafe unsafe() {
+        return unsafe;
+    }
+
+
+    //==============写缓存队列相关实现==============
+    //写缓存是通过unsafe内部ChannelOutboundBuffer组件实现
+    /**
+     * Channel 是否可写
+     * 当 Channel 的写缓存区 outbound 非 null 且可写时，返回 true
+     */
+    @Override
+    public boolean isWritable() {
+        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
+        /** 当 Channel 的写缓存区 outbound 非 null 且可写时，返回 true **/
+        return buf != null && buf.isWritable();
+    }
+
+    /**
+     * Channel 的写缓存区 outbound 距离不可写还有多少字节数
+     */
+    @Override
+    public long bytesBeforeUnwritable() {
+        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
+        return buf != null ? buf.bytesBeforeUnwritable() : 0;
+    }
+
+    /**
+     *  Channel 的写缓存区 outbound 距离可写还要多少字节数
+     */
+    @Override
+    public long bytesBeforeWritable() {
+        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
+        return buf != null ? buf.bytesBeforeWritable() : Long.MAX_VALUE;
+    }
+
+
+    //==============配置相关==============
+
+
+    /**
+     * 返回本地地址 是通过从unsafe().localAddress()获取
+     */
+    @Override
     public SocketAddress localAddress() {
         SocketAddress localAddress = this.localAddress;
         if (localAddress == null) {
@@ -206,16 +221,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             } catch (Error e) {
                 throw e;
             } catch (Throwable t) {
-                // Sometimes fails on a closed socket in Windows.
                 return null;
             }
         }
         return localAddress;
     }
 
-    /**
-     * @deprecated no use-case for this.
-     */
+
     @Deprecated
     protected void invalidateLocalAddress() {
         localAddress = null;
@@ -230,16 +242,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             } catch (Error e) {
                 throw e;
             } catch (Throwable t) {
-                // Sometimes fails on a closed socket in Windows.
                 return null;
             }
         }
         return remoteAddress;
     }
 
-    /**
-     * @deprecated no use-case for this.
-     */
     @Deprecated
     protected void invalidateRemoteAddress() {
         remoteAddress = null;
@@ -367,10 +375,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         return closeFuture;
     }
 
-    @Override
-    public Unsafe unsafe() {
-        return unsafe;
-    }
+
 
     /**
      * Create a new {@link AbstractUnsafe} instance which will be used for the life-time of the {@link Channel}
@@ -1102,10 +1107,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         }
 
         /**
-         * Prepares to close the {@link Channel}. If this method returns an {@link Executor}, the
-         * caller must call the {@link Executor#execute(Runnable)} method with a task that calls
-         * {@link #doClose()} on the returned {@link Executor}. If this method returns {@code null},
-         * {@link #doClose()} must be called from the caller thread. (i.e. {@link EventLoop})
+         * 准备关闭{@link Channel}
+         * 如果此方法返回一个Executor，则必须使用Executor，并提交任务，任务工作是调用abstractchannel.doclose（）关闭Channel
+         * 如果此方法返回一个null，则调用方线程调用AbstractChannel.docLose（）关闭Channel
          */
         protected Executor prepareToClose() {
             return null;
