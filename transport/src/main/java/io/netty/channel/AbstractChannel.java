@@ -759,6 +759,18 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         }
 
         /**
+         * 强制关闭{@link Channel}，不通知
+         */
+        @Override
+        public final void closeForcibly() {
+            assertEventLoop();
+            try {
+                doClose();
+            } catch (Exception e) {
+                logger.warn("Failed to close a channel.", e);
+            }
+        }
+        /**
          * 关闭Channel，ChannelPromise负责在操作完成后通知。
          */
         @Override
@@ -817,7 +829,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     @Override
                     public void run() {
                         try {
-                            /** 调用AbstractChannel.doClose0 实现关闭Channel，这里是模板方法，交给子类实现 **/
+                            /** 实现关闭Channel**/
                             doClose0(promise);
                         } finally {
                             /** 使用eventLoop处理异步任务 **/
@@ -838,7 +850,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 });
             } else {
                 try {
-                    /** 调用AbstractChannel.doClose0 实现关闭Channel，这里是模板方法，交给子类实现 **/
+                    /** 实现关闭Channel**/
                     doClose0(promise);
                 } finally {
                     if (outboundBuffer != null) {
@@ -862,10 +874,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        /** 实现关闭Channel**/
         private void doClose0(ChannelPromise promise) {
             try {
+                /** 调用AbstractChannel.doClose 实现关闭Channel，这里是模板方法，交给子类实现 **/
                 doClose();
+                /** closeFuture 设置Channel已经关闭，通知回调 **/
                 closeFuture.setClosed();
+                /**  promise 设置执行成功   **/
                 safeSetSuccess(promise);
             } catch (Throwable t) {
                 closeFuture.setClosed();
@@ -873,91 +889,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        /**
+         * 执行取消注册，并触发 Channel Inactive 事件到 pipeline 中
+         */
         private void fireChannelInactiveAndDeregister(final boolean wasActive) {
             deregister(voidPromise(), wasActive && !isActive());
         }
 
-
-        @UnstableApi
-        public final void shutdownOutput(final ChannelPromise promise) {
-            assertEventLoop();
-            shutdownOutput(promise, null);
-        }
-
-
-        private void shutdownOutput(final ChannelPromise promise, Throwable cause) {
-            if (!promise.setUncancellable()) {
-                return;
-            }
-
-            final ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
-            if (outboundBuffer == null) {
-                promise.setFailure(new ClosedChannelException());
-                return;
-            }
-            this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
-
-            final Throwable shutdownCause = cause == null ?
-                    new ChannelOutputShutdownException("Channel output shutdown") :
-                    new ChannelOutputShutdownException("Channel output shutdown", cause);
-            Executor closeExecutor = prepareToClose();
-            if (closeExecutor != null) {
-                closeExecutor.execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            // Execute the shutdown.
-                            doShutdownOutput();
-                            promise.setSuccess();
-                        } catch (Throwable err) {
-                            promise.setFailure(err);
-                        } finally {
-                            // Dispatch to the EventLoop
-                            eventLoop().execute(new Runnable() {
-                                @Override
-                                public void run() {
-                                    closeOutboundBufferForShutdown(pipeline, outboundBuffer, shutdownCause);
-                                }
-                            });
-                        }
-                    }
-                });
-            } else {
-                try {
-                    // Execute the shutdown.
-                    doShutdownOutput();
-                    promise.setSuccess();
-                } catch (Throwable err) {
-                    promise.setFailure(err);
-                } finally {
-                    closeOutboundBufferForShutdown(pipeline, outboundBuffer, shutdownCause);
-                }
-            }
-        }
-
-        private void closeOutboundBufferForShutdown(
-                ChannelPipeline pipeline, ChannelOutboundBuffer buffer, Throwable cause) {
-            buffer.failFlushed(cause, false);
-            buffer.close(cause, true);
-            pipeline.fireUserEventTriggered(ChannelOutputShutdownEvent.INSTANCE);
-        }
-
-
-
-
-
-
-
-        @Override
-        public final void closeForcibly() {
-            assertEventLoop();
-
-            try {
-                doClose();
-            } catch (Exception e) {
-                logger.warn("Failed to close a channel.", e);
-            }
-        }
 
         @Override
         public final void deregister(final ChannelPromise promise) {
@@ -967,14 +905,19 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         }
 
         private void deregister(final ChannelPromise promise, final boolean fireChannelInactive) {
+
+            /** 标记promise无法取消失败返回 **/
             if (!promise.setUncancellable()) {
                 return;
             }
 
+            /**  不处于已经注册状态，直接通知 Promise 取消注册成功。**/
             if (!registered) {
                 safeSetSuccess(promise);
                 return;
             }
+
+            /**  使用eventLoop异步执行doDeregister 将{@link Channel}从{@link EventLoop}中注销  **/
             invokeLater(new Runnable() {
                 @Override
                 public void run() {
@@ -986,10 +929,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         if (fireChannelInactive) {
                             pipeline.fireChannelInactive();
                         }
-                        // Some transports like local and AIO does not allow the deregistration of
-                        // an open channel.  Their doDeregister() calls close(). Consequently,
-                        // close() calls deregister() again - no need to fire channelUnregistered, so check
-                        // if it was registered.
                         if (registered) {
                             registered = false;
                             pipeline.fireChannelUnregistered();
@@ -1128,6 +1067,72 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 inFlush0 = false;
             }
         }
+
+
+        @UnstableApi
+        public final void shutdownOutput(final ChannelPromise promise) {
+            assertEventLoop();
+            shutdownOutput(promise, null);
+        }
+
+
+        private void shutdownOutput(final ChannelPromise promise, Throwable cause) {
+            if (!promise.setUncancellable()) {
+                return;
+            }
+
+            final ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
+            if (outboundBuffer == null) {
+                promise.setFailure(new ClosedChannelException());
+                return;
+            }
+            this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
+
+            final Throwable shutdownCause = cause == null ?
+                    new ChannelOutputShutdownException("Channel output shutdown") :
+                    new ChannelOutputShutdownException("Channel output shutdown", cause);
+            Executor closeExecutor = prepareToClose();
+            if (closeExecutor != null) {
+                closeExecutor.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            // Execute the shutdown.
+                            doShutdownOutput();
+                            promise.setSuccess();
+                        } catch (Throwable err) {
+                            promise.setFailure(err);
+                        } finally {
+                            // Dispatch to the EventLoop
+                            eventLoop().execute(new Runnable() {
+                                @Override
+                                public void run() {
+                                    closeOutboundBufferForShutdown(pipeline, outboundBuffer, shutdownCause);
+                                }
+                            });
+                        }
+                    }
+                });
+            } else {
+                try {
+                    // Execute the shutdown.
+                    doShutdownOutput();
+                    promise.setSuccess();
+                } catch (Throwable err) {
+                    promise.setFailure(err);
+                } finally {
+                    closeOutboundBufferForShutdown(pipeline, outboundBuffer, shutdownCause);
+                }
+            }
+        }
+
+        private void closeOutboundBufferForShutdown(
+                ChannelPipeline pipeline, ChannelOutboundBuffer buffer, Throwable cause) {
+            buffer.failFlushed(cause, false);
+            buffer.close(cause, true);
+            pipeline.fireUserEventTriggered(ChannelOutputShutdownEvent.INSTANCE);
+        }
+
 
         private ClosedChannelException newClosedChannelException(Throwable cause) {
             ClosedChannelException exception = new ClosedChannelException();

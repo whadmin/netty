@@ -449,6 +449,26 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
          * 准备关闭{@link Channel}
          * 如果此方法返回一个Executor，则必须使用Executor，并提交任务，任务工作是调用abstractchannel.doclose（）关闭Channel
          * 如果此方法返回一个null，则调用方线程调用AbstractChannel.docLose（）关闭Channel
+         *
+         * 为什么要取消selectionKey ?
+         *
+         * 如果Netty配置如下信息 StandardSocketOptions.SO_LINGER
+         *
+         * Socket 参数，关闭 Socket 的延迟时间，Netty 默认值为 -1 ，表示禁用该功能。
+         * * -1 表示 socket.close() 方法立即返回，但 OS 底层会将发送缓冲区全部发送到对端。
+         * * 0 表示 socket.close() 方法立即返回，OS 放弃发送缓冲区的数据直接向对端发送RST包，对端收到复位错误。
+         * * 非 0 整数值表示调用 socket.close() 方法的线程被阻塞直到延迟时间到或发送缓冲区中的数据发送完毕，若超时，则对端会收到复位错误。
+         *
+         * 按照这个定义，如果大于 0，如果在真正关闭 Channel ，需要阻塞直到延迟时间到或发送缓冲区中的数据发送完毕。
+         *
+         * 如果在 EventLoop 中执行真正关闭 Channel 的操作，那么势必会阻塞 EventLoop 的线程。所以GlobalEventExecutor.INSTANCE，
+         * 返回 GlobalEventExecutor.INSTANCE 对象，作为执行真正关闭 Channel 的操作的执行器( 它也有一个自己的线程哟 )。
+         *
+         * 因为 SO_LINGER 大于 0 时，真正关闭 Channel ，需要阻塞直到延迟时间到或发送缓冲区中的数据发送完毕。如果不取消该 Channel 的 SelectionKey.OP_READ 事件的感兴趣，就会不断触发读事件，导致 CPU 空轮询。为什么呢?在 Channel 关闭时，
+         * 会自动触发 SelectionKey.OP_READ 事件。而且，会不断不断不断的触发，如果不进行取消 SelectionKey.OP_READ 事件的感兴趣。
+         *
+         * 如果开启 SO_LINGER 功能，返回 GlobalEventExecutor.INSTANCE 对象
+         * 若果关闭 SO_LINGER 功能，返回 null 对象
          */
         @Override
         protected Executor prepareToClose() {
