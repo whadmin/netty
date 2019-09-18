@@ -789,15 +789,20 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     @Override
     public ChannelHandlerContext flush() {
+        /** 获得下一个 Outbound 节点  **/
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_FLUSH);
         EventExecutor executor = next.executor();
+        /**  在 EventLoop 的线程中 **/
         if (executor.inEventLoop()) {
+            /** 执行 flush 事件到下一个节点 **/
             next.invokeFlush();
         } else {
+            /**  创建 flush 任务 **/
             Tasks tasks = next.invokeTasks;
             if (tasks == null) {
                 next.invokeTasks = tasks = new Tasks(next);
             }
+            /**  提交到 EventLoop 的线程中，执行该任务 **/
             safeExecute(executor, tasks.invokeFlushTask, channel().voidPromise(), null);
         }
 
@@ -881,9 +886,6 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             }
             /** 提交到 EventLoop 的线程中，执行该任务 **/
             if (!safeExecute(executor, task, promise, m)) {
-                // We failed to submit the AbstractWriteTask. We need to cancel it so we decrement the pending bytes
-                // and put it back in the Recycler for re-use later.
-                //
                 // See https://github.com/netty/netty/issues/8343.
                 task.cancel();
             }
@@ -1137,64 +1139,119 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return StringUtil.simpleClassName(ChannelHandlerContext.class) + '(' + name + ", " + channel() + ')';
     }
 
+    /**
+     * 写入任务抽象类，它有两个子类实现
+     * WriteTask ，write 任务实现类。
+     * WriteAndFlushTask ，write + flush 任务实现类。
+     * 它们都是 AbstractChannelHandlerContext 的内部静态类
+     */
     abstract static class AbstractWriteTask implements Runnable {
 
+        /**
+         * 提交任务时，是否计算 AbstractWriteTask 对象的自身占用内存大小
+         */
         private static final boolean ESTIMATE_TASK_SIZE_ON_SUBMIT =
                 SystemPropertyUtil.getBoolean("io.netty.transport.estimateSizeOnSubmit", true);
 
-        // Assuming a 64-bit JVM, 16 bytes object header, 3 reference fields and one int field, plus alignment
+        /**
+         * 每个 AbstractWriteTask 对象自身占用内存的大小。
+         * - 16 bytes object header ，对象头，16 字节。
+         * - 3 reference fields ，3 个对象引用字段，3 * 8 = 24 字节。
+         * - 1 int fields ，1 个 int 字段，4 字节。
+         * padding ，补齐 8 字节的整数倍，因此 4 字节。
+         * 因此，合计 48 字节( 64 位的 JVM 虚拟机，并且不考虑压缩 )。
+         */
         private static final int WRITE_TASK_OVERHEAD =
                 SystemPropertyUtil.getInt("io.netty.transport.writeTaskSizeOverhead", 48);
 
+        /**
+         * Recycler 处理器，Recycler 是 Netty 用来实现对象池的工具类。在网络通信中，写入是非常频繁的操作
+         */
         private final Recycler.Handle<AbstractWriteTask> handle;
+
+        /**
+         * pipeline 中的节点
+         */
         private AbstractChannelHandlerContext ctx;
+
+        /**
+         * 消息( 数据 )
+         */
         private Object msg;
+
+        /**
+         * Promise 对象
+         */
         private ChannelPromise promise;
+
+        /**
+         * 对象大小
+         */
         private int size;
 
+        /**
+         * 实例化 AbstractWriteTask
+         */
         @SuppressWarnings("unchecked")
         private AbstractWriteTask(Recycler.Handle<? extends AbstractWriteTask> handle) {
             this.handle = (Recycler.Handle<AbstractWriteTask>) handle;
         }
 
+        /**
+         * 初始化 AbstractWriteTask
+         */
         protected static void init(AbstractWriteTask task, AbstractChannelHandlerContext ctx,
                                    Object msg, ChannelPromise promise) {
             task.ctx = ctx;
             task.msg = msg;
             task.promise = promise;
 
+            /** 计算 AbstractWriteTask 对象大小 **/
             if (ESTIMATE_TASK_SIZE_ON_SUBMIT) {
                 task.size = ctx.pipeline.estimatorHandle().size(msg) + WRITE_TASK_OVERHEAD;
+                /**  增加 ChannelOutboundBuffer 的 totalPendingSize 属性  <2  **/
                 ctx.pipeline.incrementPendingOutboundBytes(task.size);
             } else {
                 task.size = 0;
             }
         }
 
+        /**
+         * 执行
+         */
         @Override
         public final void run() {
             try {
+                /** 减少 ChannelOutboundBuffer 的 totalPendingSize 属性 **/
                 decrementPendingOutboundBytes();
+                /** 写入 **/
                 write(ctx, msg, promise);
             } finally {
+                /** 回收对象  **/
                 recycle();
             }
         }
 
+        /**
+         * 取消
+         */
         void cancel() {
             try {
+                /** 减少 ChannelOutboundBuffer 的 totalPendingSize 属性 **/
                 decrementPendingOutboundBytes();
             } finally {
                 recycle();
             }
         }
 
+        /** 减少 ChannelOutboundBuffer 的 totalPendingSize 属性 **/
         private void decrementPendingOutboundBytes() {
             if (ESTIMATE_TASK_SIZE_ON_SUBMIT) {
                 ctx.pipeline.decrementPendingOutboundBytes(size);
             }
         }
 
+        /** 回收对象  **/
         private void recycle() {
             // Set to null so the GC can collect them directly
             ctx = null;
@@ -1210,6 +1267,9 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     static final class WriteTask extends AbstractWriteTask implements SingleThreadEventLoop.NonWakeupRunnable {
 
+        /**
+         * 创建WriteTask 对象池
+         */
         private static final Recycler<WriteTask> RECYCLER = new Recycler<WriteTask>() {
             @Override
             protected WriteTask newObject(Handle<WriteTask> handle) {
@@ -1219,11 +1279,17 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
         static WriteTask newInstance(
                 AbstractChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+            /**  从 Recycler 的对象池中获得 WriteTask 对象 **/
             WriteTask task = RECYCLER.get();
+            /**  初始化 **/
             init(task, ctx, msg, promise);
             return task;
         }
 
+
+        /**
+         * 实例化WriteTask
+         */
         private WriteTask(Recycler.Handle<WriteTask> handle) {
             super(handle);
         }
@@ -1231,6 +1297,9 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     static final class WriteAndFlushTask extends AbstractWriteTask {
 
+        /**
+         * 创建 WriteAndFlushTask 对象池
+         */
         private static final Recycler<WriteAndFlushTask> RECYCLER = new Recycler<WriteAndFlushTask>() {
             @Override
             protected WriteAndFlushTask newObject(Handle<WriteAndFlushTask> handle) {
@@ -1240,15 +1309,23 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
         static WriteAndFlushTask newInstance(
                 AbstractChannelHandlerContext ctx, Object msg,  ChannelPromise promise) {
+            /**  从 Recycler 的对象池中获得 WriteTask 对象 **/
             WriteAndFlushTask task = RECYCLER.get();
+            /**  初始化 **/
             init(task, ctx, msg, promise);
             return task;
         }
 
+        /**
+         * 实例化 WriteAndFlushTask
+         */
         private WriteAndFlushTask(Recycler.Handle<WriteAndFlushTask> handle) {
             super(handle);
         }
 
+        /**
+         * 覆盖写入，同时增加刷新动作
+         */
         @Override
         public void write(AbstractChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
             super.write(ctx, msg, promise);

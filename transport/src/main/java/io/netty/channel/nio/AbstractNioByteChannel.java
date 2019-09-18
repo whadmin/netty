@@ -37,11 +37,11 @@ import java.nio.channels.SelectionKey;
 
 import static io.netty.channel.internal.ChannelUtils.WRITE_STATUS_SNDBUF_FULL;
 
-/**
- * {@link AbstractNioChannel} base class for {@link Channel}s that operate on bytes.
- */
+
 public abstract class AbstractNioByteChannel extends AbstractNioChannel {
+
     private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
+
     private static final String EXPECTED_TYPES =
             " (expected: " + StringUtil.simpleClassName(ByteBuf.class) + ", " +
             StringUtil.simpleClassName(FileRegion.class) + ')';
@@ -54,20 +54,18 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             ((AbstractNioUnsafe) unsafe()).flush0();
         }
     };
+
     private boolean inputClosedSeenErrorOnRead;
 
     /**
-     * Create a new instance
-     *
-     * @param parent            the parent {@link Channel} by which this instance was created. May be {@code null}
-     * @param ch                the underlying {@link SelectableChannel} on which it operates
+     * 实例化 AbstractNioByteChannel
      */
     protected AbstractNioByteChannel(Channel parent, SelectableChannel ch) {
         super(parent, ch, SelectionKey.OP_READ);
     }
 
     /**
-     * Shutdown the input side of the channel.
+     * 关闭通道的输入侧。
      */
     protected abstract ChannelFuture shutdownInput();
 
@@ -213,18 +211,26 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     }
 
     /**
-     * Write objects to the OS.
-     * @param in the collection which contains objects to write.
-     * @return The value that should be decremented from the write quantum which starts at
-     * {@link ChannelConfig#getWriteSpinCount()}. The typical use cases are as follows:
-     * <ul>
-     *     <li>0 - if no write was attempted. This is appropriate if an empty {@link ByteBuf} (or other empty content)
-     *     is encountered</li>
-     *     <li>1 - if a single call to write data was made to the OS</li>
-     *     <li>{@link ChannelUtils#WRITE_STATUS_SNDBUF_FULL} - if an attempt to write data was made to the OS, but no
-     *     data was accepted</li>
-     * </ul>
-     * @throws Exception if an I/O exception occurs during write.
+     * 对于NIO流程来看，该方法被子类NioSocketChannel覆盖，对于NIO来说不会调用，可以忽略
+     * 该方法会给NioUdtByteConnectorChannel 和 NioUdtByteRendezvousChannel 会使用到该方法
+     */
+    @Override
+    protected void doWrite(ChannelOutboundBuffer in) throws Exception {
+        int writeSpinCount = config().getWriteSpinCount();
+        do {
+            Object msg = in.current();
+            if (msg == null) {
+                clearOpWrite();
+                return;
+            }
+            writeSpinCount -= doWriteInternal(in, msg);
+        } while (writeSpinCount > 0);
+
+        incompleteWrite(writeSpinCount < 0);
+    }
+
+    /**
+     * 内部的数据为 FileRegion 写入
      */
     protected final int doWrite0(ChannelOutboundBuffer in) throws Exception {
         Object msg = in.current();
@@ -235,6 +241,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         return doWriteInternal(in, in.current());
     }
 
+    /**
+     * 内部的数据为 FileRegion 写入
+     */
     private int doWriteInternal(ChannelOutboundBuffer in, Object msg) throws Exception {
         if (msg instanceof ByteBuf) {
             ByteBuf buf = (ByteBuf) msg;
@@ -267,91 +276,69 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 return 1;
             }
         } else {
-            // Should not reach here.
             throw new Error();
         }
         return WRITE_STATUS_SNDBUF_FULL;
     }
 
-    @Override
-    protected void doWrite(ChannelOutboundBuffer in) throws Exception {
-        int writeSpinCount = config().getWriteSpinCount();
-        do {
-            Object msg = in.current();
-            if (msg == null) {
-                // Wrote all messages.
-                clearOpWrite();
-                // Directly return here so incompleteWrite(...) is not called.
-                return;
-            }
-            writeSpinCount -= doWriteInternal(in, msg);
-        } while (writeSpinCount > 0);
 
-        incompleteWrite(writeSpinCount < 0);
-    }
 
     @Override
     protected final Object filterOutboundMessage(Object msg) {
+        /** 判断消息类型是否为 ByteBuf **/
         if (msg instanceof ByteBuf) {
             ByteBuf buf = (ByteBuf) msg;
+            /** 如果ByteBuf 实现方式是堆外内存直接返回 **/
             if (buf.isDirect()) {
                 return msg;
             }
-
+            /** 如果ByteBuf实现不是堆外，需要进行创建封装 **/
             return newDirectBuffer(buf);
         }
-
+        /** 判断消息类型是否为 FileRegion **/
         if (msg instanceof FileRegion) {
             return msg;
         }
-
+        /** 不支持其他类型 **/
         throw new UnsupportedOperationException(
                 "unsupported message type: " + StringUtil.simpleClassName(msg) + EXPECTED_TYPES);
     }
 
     protected final void incompleteWrite(boolean setOpWrite) {
-        // Did not write completely.
+        /**setOpWrite== true ，注册对 SelectionKey.OP_WRITE 事件感兴趣 **/
         if (setOpWrite) {
+            /** 注册对 SelectionKey.OP_WRITE 事件感兴趣 **/
             setOpWrite();
-        } else {
-            // It is possible that we have set the write OP, woken up by NIO because the socket is writable, and then
-            // use our write quantum. In this case we no longer want to set the write OP because the socket is still
-            // writable (as far as we know). We will find out next time we attempt to write if the socket is writable
-            // and set the write OP if necessary.
+        }
+        /** setOpWrite==false ，取消对 SelectionKey.OP_WRITE 事件感兴趣 **/
+        else {
+            /** 取消对 SelectionKey.OP_WRITE 事件感兴趣  **/
             clearOpWrite();
-
-            // Schedule flush again later so other tasks can be picked up in the meantime
+            /** 异步任务提交立即发起下一次 flush 任务**/
             eventLoop().execute(flushTask);
         }
     }
 
     /**
-     * Write a {@link FileRegion}
-     *
-     * @param region        the {@link FileRegion} from which the bytes should be written
-     * @return amount       the amount of written bytes
+     * 将FileRegion中数据写入Channel
      */
     protected abstract long doWriteFileRegion(FileRegion region) throws Exception;
 
     /**
-     * 读取写入的数据到方法参数 buf 中。它是一个抽象方法，
-     * 返回值为读取到的字节数。
-     * 当返回值小于 0 时，表示对端已经关闭。
+     * 读取Channel数据写入ByteBuf
      */
     protected abstract int doReadBytes(ByteBuf buf) throws Exception;
 
     /**
-     * Write bytes form the given {@link ByteBuf} to the underlying {@link java.nio.channels.Channel}.
-     * @param buf           the {@link ByteBuf} from which the bytes should be written
-     * @return amount       the amount of written bytes
+     * 将ByteBuf中数据写入Channel
      */
     protected abstract int doWriteBytes(ByteBuf buf) throws Exception;
 
+    /**
+     * 设置Channel注册到Selector事件追加 SelectionKey.OP_WRITE
+     */
     protected final void setOpWrite() {
         final SelectionKey key = selectionKey();
-        // Check first if the key is still valid as it may be canceled as part of the deregistration
-        // from the EventLoop
-        // See https://github.com/netty/netty/issues/2104
         if (!key.isValid()) {
             return;
         }
@@ -361,11 +348,11 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         }
     }
 
+    /**
+     * 取消Channel注册到Selector SelectionKey.OP_WRITE 事件
+     */
     protected final void clearOpWrite() {
         final SelectionKey key = selectionKey();
-        // Check first if the key is still valid as it may be canceled as part of the deregistration
-        // from the EventLoop
-        // See https://github.com/netty/netty/issues/2104
         if (!key.isValid()) {
             return;
         }

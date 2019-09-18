@@ -363,9 +363,6 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     }
 
     private void adjustMaxBytesPerGatheringWrite(int attempted, int written, int oldMaxBytesPerGatheringWrite) {
-        // By default we track the SO_SNDBUF when ever it is explicitly set. However some OSes may dynamically change
-        // SO_SNDBUF (and other characteristics that determine how much data can be written at once) so we should try
-        // make a best effort to adjust as OS behavior changes.
         if (attempted == written) {
             if (attempted << 1 > oldMaxBytesPerGatheringWrite) {
                 ((NioSocketChannelConfig) config).setMaxBytesPerGatheringWrite(attempted << 1);
@@ -380,52 +377,63 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         SocketChannel ch = javaChannel();
         int writeSpinCount = config().getWriteSpinCount();
         do {
+            /** 如果缓冲队列为null，直接返回 **/
             if (in.isEmpty()) {
-                // All written so clear OP_WRITE
+                /** 取消对 SelectionKey.OP_WRITE 的感兴趣 **/
                 clearOpWrite();
-                // Directly return here so incompleteWrite(...) is not called.
                 return;
             }
 
-            // Ensure the pending writes are made of ByteBufs only.
+            /**  从ChannelConfig获得每次写入的最大字节数 **/
             int maxBytesPerGatheringWrite = ((NioSocketChannelConfig) config).getMaxBytesPerGatheringWrite();
+
+            /**  从缓冲队列读取数据，写入ByteBuffer数组，并返回 **/
             ByteBuffer[] nioBuffers = in.nioBuffers(1024, maxBytesPerGatheringWrite);
+
+            /**  获得写入的 ByteBuffer 数组的个数。为什么不直接调用数组的 #length() 方法呢？
+             * 因为返回的 ByteBuffer 数组是预先生成的数组缓存，存在不断重用的情况，所以不能直接使用 #length() 方法，
+             * 而是要调用 ChannelOutboundBuffer#nioBufferCount() 方法，获得写入的 ByteBuffer 数组的个数**/
             int nioBufferCnt = in.nioBufferCount();
 
-            // Always us nioBuffers() to workaround data-corruption.
-            // See https://github.com/netty/netty/issues/2761
+            /** 根据 nioBufferCnt 的数值，分成三种情况 **/
             switch (nioBufferCnt) {
+                /** 内部的数据为 FileRegion **/
                 case 0:
-                    // We have something else beside ByteBuffers to write so fallback to normal writes.
                     writeSpinCount -= doWrite0(in);
                     break;
+                /** 写入单个 ByteBuffer 对象到对端  **/
                 case 1: {
-                    // Only one ByteBuf so use non-gathering write
-                    // Zero length buffers are not added to nioBuffers by ChannelOutboundBuffer, so there is no need
-                    // to check if the total size of all the buffers is non-zero.
                     ByteBuffer buffer = nioBuffers[0];
                     int attemptedBytes = buffer.remaining();
+                    /** 执行 NIO write 调用，写入单个 ByteBuffer 对象到对端 **/
                     final int localWrittenBytes = ch.write(buffer);
+                    /** 写入字节小于等于 0 ，说明 NIO Channel 不可写，
+                    // 所以注册 SelectionKey.OP_WRITE ，等待 NIO Channel 可写，并返回以结束循环  **/
                     if (localWrittenBytes <= 0) {
+                        /** 调用 AbstractNioByteChannel#incompleteWrite(true) 方法 **/
                         incompleteWrite(true);
                         return;
                     }
+                    /** 调整每次写入的最大字节数 **/
                     adjustMaxBytesPerGatheringWrite(attemptedBytes, localWrittenBytes, maxBytesPerGatheringWrite);
+                    /**  从内存队列中，移除已经写入的数据( 消息 ) **/
                     in.removeBytes(localWrittenBytes);
+                    /**  写入次数减一 **/
                     --writeSpinCount;
                     break;
                 }
                 default: {
-                    // Zero length buffers are not added to nioBuffers by ChannelOutboundBuffer, so there is no need
-                    // to check if the total size of all the buffers is non-zero.
-                    // We limit the max amount to int above so cast is safe
+                    /** 获取缓冲队列能写入字节大小 **/
                     long attemptedBytes = in.nioBufferSize();
+                    /** 执行 NIO write 调用，写入多个 ByteBuffer 到对端  **/
                     final long localWrittenBytes = ch.write(nioBuffers, 0, nioBufferCnt);
+                    /** 写入字节小于等于 0 ，说明 NIO Channel 不可写，
+                     // 所以注册 SelectionKey.OP_WRITE ，等待 NIO Channel 可写，并返回以结束循环  **/
                     if (localWrittenBytes <= 0) {
                         incompleteWrite(true);
                         return;
                     }
-                    // Casting to int is safe because we limit the total amount of data in the nioBuffers to int above.
+                    /** 调整每次写入的最大字节数 **/
                     adjustMaxBytesPerGatheringWrite((int) attemptedBytes, (int) localWrittenBytes,
                             maxBytesPerGatheringWrite);
                     in.removeBytes(localWrittenBytes);

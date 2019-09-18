@@ -59,6 +59,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     /** SelectableChannel注册到selector返回 SelectionKey **/
     volatile SelectionKey selectionKey;
 
+    /**
+     * 是否存在未读取完毕的数据
+     */
     boolean readPending;
     private final Runnable clearReadPendingRunnable = new Runnable() {
         @Override
@@ -68,8 +71,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     };
 
     /**
-     * The future of the current connection attempt.  If not null, subsequent
-     * connection attempts will fail.
+     * 连接的结果
      */
     private ChannelPromise connectPromise;
     private ScheduledFuture<?> connectTimeoutFuture;
@@ -145,19 +147,13 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         return selectionKey;
     }
 
-    /**
-     * @deprecated No longer supported.
-     * No longer supported.
-     */
+
     @Deprecated
     protected boolean isReadPending() {
         return readPending;
     }
 
-    /**
-     * @deprecated Use {@link #clearReadPending()} if appropriate instead.
-     * No longer supported.
-     */
+
     @Deprecated
     protected void setReadPending(final boolean readPending) {
         if (isRegistered()) {
@@ -211,23 +207,13 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         ((AbstractNioUnsafe) unsafe()).removeReadOp();
     }
 
-    /**
-     * Special {@link Unsafe} sub-type which allows to access the underlying {@link SelectableChannel}
-     */
+
     public interface NioUnsafe extends Unsafe {
-        /**
-         * Return underlying {@link SelectableChannel}
-         */
+
         SelectableChannel ch();
 
-        /**
-         * Finish connect
-         */
         void finishConnect();
 
-        /**
-         * Read from underlying {@link SelectableChannel}
-         */
         void read();
 
         void forceFlush();
@@ -369,6 +355,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             }
         }
 
+        /**
+         * 重写了父类flush0
+         */
         @Override
         protected final void flush0() {
             // Flush immediately only when there's no pending flush.
@@ -379,12 +368,20 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             }
         }
 
+        /**
+         * 刷新
+         */
         @Override
         public final void forceFlush() {
-            // directly call super.flush0() to force a flush now
             super.flush0();
         }
 
+        /**
+         * 判断，是否已经处于 flush 准备中
+         *
+         *  Netty 的实现中，默认 Channel 是可写的，当写入失败的时候，再去注册 SelectionKey.OP_WRITE 事件。这意味着什么呢？在 #flush() 方法中，
+         *  如果写入数据到 Channel 失败，会通过注册 SelectionKey.OP_WRITE 事件，然后在轮询到 Channel 可写 时，再“回调” #forceFlush() 方法”。
+         */
         private boolean isFlushPending() {
             SelectionKey selectionKey = selectionKey();
             return selectionKey.isValid() && (selectionKey.interestOps() & SelectionKey.OP_WRITE) != 0;
@@ -396,6 +393,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         return loop instanceof NioEventLoop;
     }
 
+    /**
+     * 将Channel注册到eventLoop 模板方法实现
+     */
     @Override
     protected void doRegister() throws Exception {
         boolean selected = false;
@@ -416,9 +416,6 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         }
     }
 
-    /**
-     * 执行取消注册。
-     */
     @Override
     protected void doDeregister() throws Exception {
         eventLoop().cancel(selectionKey());
@@ -440,20 +437,33 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     }
 
     /**
-     * Connect to the remote peer
+     * 实现关闭模板方法
      */
+    @Override
+    protected void doClose() throws Exception {
+        /** 获取连接结果promise **/
+        ChannelPromise promise = connectPromise;
+        if (promise != null) {
+            /** promise设置连接失败，并设置异常类型ClosedChannelException **/
+            promise.tryFailure(new ClosedChannelException());
+            /** 设置connectPromise 为null **/
+            connectPromise = null;
+        }
+
+        /** 取消连接超时计划任务 **/
+        ScheduledFuture<?> future = connectTimeoutFuture;
+        if (future != null) {
+            /** 取消连接超时计划任务 **/
+            future.cancel(false);
+            /** 设置 connectTimeoutFuture 为null **/
+            connectTimeoutFuture = null;
+        }
+    }
+
     protected abstract boolean doConnect(SocketAddress remoteAddress, SocketAddress localAddress) throws Exception;
 
-    /**
-     * Finish the connect
-     */
     protected abstract void doFinishConnect() throws Exception;
 
-    /**
-     * Returns an off-heap copy of the specified {@link ByteBuf}, and releases the original one.
-     * Note that this method does not create an off-heap copy if the allocation / deallocation cost is too high,
-     * but just returns the original {@link ByteBuf}..
-     */
     protected final ByteBuf newDirectBuffer(ByteBuf buf) {
         final int readableBytes = buf.readableBytes();
         if (readableBytes == 0) {
@@ -475,17 +485,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             ReferenceCountUtil.safeRelease(buf);
             return directBuf;
         }
-
-        // Allocating and deallocating an unpooled direct buffer is very expensive; give up.
         return buf;
     }
 
-    /**
-     * Returns an off-heap copy of the specified {@link ByteBuf}, and releases the specified holder.
-     * The caller must ensure that the holder releases the original {@link ByteBuf} when the holder is released by
-     * this method.  Note that this method does not create an off-heap copy if the allocation / deallocation cost is
-     * too high, but just returns the original {@link ByteBuf}..
-     */
     protected final ByteBuf newDirectBuffer(ReferenceCounted holder, ByteBuf buf) {
         final int readableBytes = buf.readableBytes();
         if (readableBytes == 0) {
@@ -508,29 +510,10 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             return directBuf;
         }
 
-        // Allocating and deallocating an unpooled direct buffer is very expensive; give up.
         if (holder != buf) {
-            // Ensure to call holder.release() to give the holder a chance to release other resources than its content.
             buf.retain();
             ReferenceCountUtil.safeRelease(holder);
         }
-
         return buf;
-    }
-
-    @Override
-    protected void doClose() throws Exception {
-        ChannelPromise promise = connectPromise;
-        if (promise != null) {
-            // Use tryFailure() instead of setFailure() to avoid the race against cancel().
-            promise.tryFailure(new ClosedChannelException());
-            connectPromise = null;
-        }
-
-        ScheduledFuture<?> future = connectTimeoutFuture;
-        if (future != null) {
-            future.cancel(false);
-            connectTimeoutFuture = null;
-        }
     }
 }
