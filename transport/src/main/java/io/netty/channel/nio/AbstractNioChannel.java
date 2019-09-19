@@ -50,7 +50,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(AbstractNioChannel.class);
 
-    /** Netty NIO Channel 对象，持有的 Java 原生 NIO 的 Channel 对象 **/
+    /** 持有的 Java 原生 NIO 的 Channel 对象 **/
     private final SelectableChannel ch;
 
     /** 感兴趣的读事件的操作位值  **/
@@ -63,6 +63,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      * 是否存在未读取完毕的数据
      */
     boolean readPending;
+
+
     private final Runnable clearReadPendingRunnable = new Runnable() {
         @Override
         public void run() {
