@@ -33,59 +33,67 @@ import static io.netty.buffer.ByteBufUtil.appendPrettyHexDump;
 import static io.netty.util.internal.StringUtil.NEWLINE;
 
 /**
- * A {@link ChannelHandler} that logs all events using a logging framework.
- * By default, all events are logged at <tt>DEBUG</tt> level.
+ * 使用日志框架记录所有事件的{@link ChannelHandler}。,
+ * 默认情况下，所有事件都记录在<tt> DEBUG </ tt>级别。
  */
 @Sharable
 @SuppressWarnings({ "StringConcatenationInsideStringBufferAppend", "StringBufferReplaceableByString" })
 public class LoggingHandler extends ChannelDuplexHandler {
 
+    /**
+     * 默认 {@link #level} 日志级别
+     */
     private static final LogLevel DEFAULT_LEVEL = LogLevel.DEBUG;
 
+    /**
+     * Netty 内部 Logger 对象
+     */
     protected final InternalLogger logger;
+
+    /**
+     * Netty 内部 LogLevel 级别
+     */
     protected final InternalLogLevel internalLevel;
 
+    /**
+     * 配置的 LogLevel 级别
+     */
     private final LogLevel level;
 
     /**
-     * Creates a new instance whose logger name is the fully qualified class
-     * name of the instance with hex dump enabled.
+     * 实例化 LoggingHandler
+     * 日志默认级别为 DEFAULT_LEVEL
+     * 指定当前类clazz类型获取日志
      */
     public LoggingHandler() {
         this(DEFAULT_LEVEL);
     }
 
     /**
-     * Creates a new instance whose logger name is the fully qualified class
-     * name of the instance.
-     *
-     * @param level the log level
+     * 实例化LoggingHandler,指定日志级别
+     * 指定当前类clazz类型获取日志
      */
     public LoggingHandler(LogLevel level) {
         if (level == null) {
             throw new NullPointerException("level");
         }
-
+        /**  获得 logger **/
         logger = InternalLoggerFactory.getInstance(getClass());
+        /**  设置日志等级 **/
         this.level = level;
         internalLevel = level.toInternalLevel();
     }
 
     /**
-     * Creates a new instance with the specified logger name and with hex dump
-     * enabled.
-     *
-     * @param clazz the class type to generate the logger for
+     * 实例化LoggingHandler,通过指定clazz类型获取日志
+     * 日志默认级别为 DEFAULT_LEVEL
      */
     public LoggingHandler(Class<?> clazz) {
         this(clazz, DEFAULT_LEVEL);
     }
 
     /**
-     * Creates a new instance with the specified logger name.
-     *
-     * @param clazz the class type to generate the logger for
-     * @param level the log level
+     * 实例化LoggingHandler,指定获取日志clazz类型,和日志级别
      */
     public LoggingHandler(Class<?> clazz, LogLevel level) {
         if (clazz == null) {
@@ -94,26 +102,23 @@ public class LoggingHandler extends ChannelDuplexHandler {
         if (level == null) {
             throw new NullPointerException("level");
         }
-
+        /**  获得 logger **/
         logger = InternalLoggerFactory.getInstance(clazz);
+        /**  设置日志等级 **/
         this.level = level;
         internalLevel = level.toInternalLevel();
     }
 
     /**
-     * Creates a new instance with the specified logger name using the default log level.
-     *
-     * @param name the name of the class to use for the logger
+     * 实例化 LoggingHandler 通过指定名称获取日志
+     * 设置日志默认级别为 DEFAULT_LEVEL
      */
     public LoggingHandler(String name) {
         this(name, DEFAULT_LEVEL);
     }
 
     /**
-     * Creates a new instance with the specified logger name.
-     *
-     * @param name the name of the class to use for the logger
-     * @param level the log level
+     * 实例化LoggingHandler,指定获取日志名称,和日志级别
      */
     public LoggingHandler(String name, LogLevel level) {
         if (name == null) {
@@ -129,12 +134,13 @@ public class LoggingHandler extends ChannelDuplexHandler {
     }
 
     /**
-     * Returns the {@link LogLevel} that this handler uses to log
+     * 返回日志等级
      */
     public LogLevel level() {
         return level;
     }
 
+    //==================实现ChannelDuplexHandler==================
     @Override
     public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
         if (logger.isEnabled(internalLevel)) {
@@ -266,9 +272,7 @@ public class LoggingHandler extends ChannelDuplexHandler {
     }
 
     /**
-     * Formats an event and returns the formatted message.
-     *
-     * @param eventName the name of the event
+     * 格式化事件并返回格式化的消息。
      */
     protected String format(ChannelHandlerContext ctx, String eventName) {
         String chStr = ctx.channel().toString();
@@ -280,10 +284,7 @@ public class LoggingHandler extends ChannelDuplexHandler {
     }
 
     /**
-     * Formats an event and returns the formatted message.
-     *
-     * @param eventName the name of the event
-     * @param arg       the argument of the event
+     * 格式化事件并返回格式化的消息。
      */
     protected String format(ChannelHandlerContext ctx, String eventName, Object arg) {
         if (arg instanceof ByteBuf) {
@@ -296,18 +297,12 @@ public class LoggingHandler extends ChannelDuplexHandler {
     }
 
     /**
-     * Formats an event and returns the formatted message.  This method is currently only used for formatting
-     * {@link ChannelOutboundHandler#connect(ChannelHandlerContext, SocketAddress, SocketAddress, ChannelPromise)}.
-     *
-     * @param eventName the name of the event
-     * @param firstArg  the first argument of the event
-     * @param secondArg the second argument of the event
+     * 格式化事件并返回格式化的消息。
      */
     protected String format(ChannelHandlerContext ctx, String eventName, Object firstArg, Object secondArg) {
         if (secondArg == null) {
             return formatSimple(ctx, eventName, firstArg);
         }
-
         String chStr = ctx.channel().toString();
         String arg1Str = String.valueOf(firstArg);
         String arg2Str = secondArg.toString();
@@ -318,7 +313,7 @@ public class LoggingHandler extends ChannelDuplexHandler {
     }
 
     /**
-     * Generates the default log message of the specified event whose argument is a {@link ByteBuf}.
+     * 生成指定事件的默认日志消息，其参数为{@link ByteBuf}。
      */
     private static String formatByteBuf(ChannelHandlerContext ctx, String eventName, ByteBuf msg) {
         String chStr = ctx.channel().toString();
@@ -339,7 +334,7 @@ public class LoggingHandler extends ChannelDuplexHandler {
     }
 
     /**
-     * Generates the default log message of the specified event whose argument is a {@link ByteBufHolder}.
+     * 生成指定事件的默认日志消息，其参数为{@link ByteBufHolder}。
      */
     private static String formatByteBufHolder(ChannelHandlerContext ctx, String eventName, ByteBufHolder msg) {
         String chStr = ctx.channel().toString();
@@ -364,7 +359,7 @@ public class LoggingHandler extends ChannelDuplexHandler {
     }
 
     /**
-     * Generates the default log message of the specified event whose argument is an arbitrary object.
+     * 生成指定事件的默认日志消息，其参数为任意对象。
      */
     private static String formatSimple(ChannelHandlerContext ctx, String eventName, Object msg) {
         String chStr = ctx.channel().toString();

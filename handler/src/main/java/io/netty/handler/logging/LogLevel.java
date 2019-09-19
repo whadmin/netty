@@ -18,15 +18,19 @@ package io.netty.handler.logging;
 import io.netty.util.internal.logging.InternalLogLevel;
 
 /**
- * Maps the regular {@link LogLevel}s with the {@link InternalLogLevel} ones.
+ * 日志级别枚举类
  */
 public enum LogLevel {
+
     TRACE(InternalLogLevel.TRACE),
     DEBUG(InternalLogLevel.DEBUG),
     INFO(InternalLogLevel.INFO),
     WARN(InternalLogLevel.WARN),
     ERROR(InternalLogLevel.ERROR);
 
+    /**
+     * Netty 内部日志级别
+     */
     private final InternalLogLevel internalLevel;
 
     LogLevel(InternalLogLevel internalLevel) {
@@ -34,11 +38,7 @@ public enum LogLevel {
     }
 
     /**
-     * For internal use only.
-     *
-     * <p/>Converts the specified {@link LogLevel} to its {@link InternalLogLevel} variant.
-     *
-     * @return the converted level.
+     * 返回 Netty 内部日志级别
      */
     public InternalLogLevel toInternalLevel() {
         return internalLevel;
