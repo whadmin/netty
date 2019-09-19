@@ -72,133 +72,74 @@ import java.util.List;
  */
 public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter {
 
-    /**
-     * Cumulate {@link ByteBuf}s by merge them into one {@link ByteBuf}'s, using memory copies.
-     */
-    public static final Cumulator MERGE_CUMULATOR = new Cumulator() {
-        @Override
-        public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
-            try {
-                final ByteBuf buffer;
-                if (cumulation.writerIndex() > cumulation.maxCapacity() - in.readableBytes()
-                    || cumulation.refCnt() > 1 || cumulation.isReadOnly()) {
-                    // Expand cumulation (by replace it) when either there is not more room in the buffer
-                    // or if the refCnt is greater then 1 which may happen when the user use slice().retain() or
-                    // duplicate().retain() or if its read-only.
-                    //
-                    // See:
-                    // - https://github.com/netty/netty/issues/2327
-                    // - https://github.com/netty/netty/issues/1764
-                    buffer = expandCumulation(alloc, cumulation, in.readableBytes());
-                } else {
-                    buffer = cumulation;
-                }
-                buffer.writeBytes(in);
-                return buffer;
-            } finally {
-                // We must release in in all cases as otherwise it may produce a leak if writeBytes(...) throw
-                // for whatever release (for example because of OutOfMemoryError)
-                in.release();
-            }
-        }
-    };
 
-    /**
-     * Cumulate {@link ByteBuf}s by add them to a {@link CompositeByteBuf} and so do no memory copy whenever possible.
-     * Be aware that {@link CompositeByteBuf} use a more complex indexing implementation so depending on your use-case
-     * and the decoder implementation this may be slower then just use the {@link #MERGE_CUMULATOR}.
-     */
-    public static final Cumulator COMPOSITE_CUMULATOR = new Cumulator() {
-        @Override
-        public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
-            ByteBuf buffer;
-            try {
-                if (cumulation.refCnt() > 1) {
-                    // Expand cumulation (by replace it) when the refCnt is greater then 1 which may happen when the
-                    // user use slice().retain() or duplicate().retain().
-                    //
-                    // See:
-                    // - https://github.com/netty/netty/issues/2327
-                    // - https://github.com/netty/netty/issues/1764
-                    buffer = expandCumulation(alloc, cumulation, in.readableBytes());
-                    buffer.writeBytes(in);
-                } else {
-                    CompositeByteBuf composite;
-                    if (cumulation instanceof CompositeByteBuf) {
-                        composite = (CompositeByteBuf) cumulation;
-                    } else {
-                        composite = alloc.compositeBuffer(Integer.MAX_VALUE);
-                        composite.addComponent(true, cumulation);
-                    }
-                    composite.addComponent(true, in);
-                    in = null;
-                    buffer = composite;
-                }
-                return buffer;
-            } finally {
-                if (in != null) {
-                    // We must release if the ownership was not transferred as otherwise it may produce a leak if
-                    // writeBytes(...) throw for whatever release (for example because of OutOfMemoryError).
-                    in.release();
-                }
-            }
-        }
-    };
+
+
 
     private static final byte STATE_INIT = 0;
     private static final byte STATE_CALLING_CHILD_DECODE = 1;
     private static final byte STATE_HANDLER_REMOVED_PENDING = 2;
 
+    /**
+     * 累积的 ByteBuf 对象
+     */
     ByteBuf cumulation;
+
+    /**
+     * 累计器
+     */
     private Cumulator cumulator = MERGE_CUMULATOR;
+
+    /**
+     * 设置为true后每个channelRead事件只解码出一个消息包
+     */
     private boolean singleDecode;
+
+    /**
+     * 是否首次读取，即 {@link #cumulation} 为空
+     */
     private boolean first;
 
     /**
-     * This flag is used to determine if we need to call {@link ChannelHandlerContext#read()} to consume more data
-     * when {@link ChannelConfig#isAutoRead()} is {@code false}.
+         * This flag is used to determine if we need to call {@link ChannelHandlerContext#read()} to consume more data
+         * when {@link ChannelConfig#isAutoRead()} is {@code false}.
      */
     private boolean firedChannelRead;
 
     /**
-     * A bitmask where the bits are defined as
-     * <ul>
-     *     <li>{@link #STATE_INIT}</li>
-     *     <li>{@link #STATE_CALLING_CHILD_DECODE}</li>
-     *     <li>{@link #STATE_HANDLER_REMOVED_PENDING}</li>
-     * </ul>
+     * 解码状态
+     * 0 - 初始化
+     * 1 - 调用 {@link #decode(ChannelHandlerContext, ByteBuf, List)} 方法中，正在进行解码
+     * 2 - 准备移除
      */
     private byte decodeState = STATE_INIT;
+
+    /**
+     * 读取释放阀值
+     */
     private int discardAfterReads = 16;
+
+    /**
+     * 已读取次数。
+     * 再读取 {@link #discardAfterReads} 次数据后，如果无法全部解码完，则进行释放，避免 OOM
+     */
     private int numReads;
 
     protected ByteToMessageDecoder() {
         ensureNotSharable();
     }
 
-    /**
-     * If set then only one message is decoded on each {@link #channelRead(ChannelHandlerContext, Object)}
-     * call. This may be useful if you need to do some protocol upgrade and want to make sure nothing is mixed up.
-     *
-     * Default is {@code false} as this has performance impacts.
-     */
+
     public void setSingleDecode(boolean singleDecode) {
         this.singleDecode = singleDecode;
     }
 
-    /**
-     * If {@code true} then only one message is decoded on each
-     * {@link #channelRead(ChannelHandlerContext, Object)} call.
-     *
-     * Default is {@code false} as this has performance impacts.
-     */
+
     public boolean isSingleDecode() {
         return singleDecode;
     }
 
-    /**
-     * Set the {@link Cumulator} to use for cumulate the received {@link ByteBuf}s.
-     */
+
     public void setCumulator(Cumulator cumulator) {
         if (cumulator == null) {
             throw new NullPointerException("cumulator");
@@ -206,30 +147,18 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         this.cumulator = cumulator;
     }
 
-    /**
-     * Set the number of reads after which {@link ByteBuf#discardSomeReadBytes()} are called and so free up memory.
-     * The default is {@code 16}.
-     */
+
     public void setDiscardAfterReads(int discardAfterReads) {
         checkPositive(discardAfterReads, "discardAfterReads");
         this.discardAfterReads = discardAfterReads;
     }
 
-    /**
-     * Returns the actual number of readable bytes in the internal cumulative
-     * buffer of this decoder. You usually do not need to rely on this value
-     * to write a decoder. Use it only when you must use it at your own risk.
-     * This method is a shortcut to {@link #internalBuffer() internalBuffer().readableBytes()}.
-     */
+
     protected int actualReadableBytes() {
         return internalBuffer().readableBytes();
     }
 
-    /**
-     * Returns the internal cumulative buffer of this decoder. You usually
-     * do not need to access the internal buffer directly to write a decoder.
-     * Use it only when you must use it at your own risk.
-     */
+
     protected ByteBuf internalBuffer() {
         if (cumulation != null) {
             return cumulation;
@@ -270,30 +199,45 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        /** 只对ByteBuf类型的消息做处理 **/
         if (msg instanceof ByteBuf) {
+            /** 解码消息存储列表 **/
             CodecOutputList out = CodecOutputList.newInstance();
             try {
                 ByteBuf data = (ByteBuf) msg;
+                /** 通过判断cumulation是否为null来确定是否是首次读取， **/
                 first = cumulation == null;
+                /** 若首次，直接使用读取的 data **/
                 if (first) {
                     cumulation = data;
-                } else {
+                }
+                /** 若非首次，将读取的 data ，累积到 cumulation 中 **/
+                else {
                     cumulation = cumulator.cumulate(ctx.alloc(), cumulation, data);
                 }
+                /** 执行解码 **/
                 callDecode(ctx, cumulation, out);
             } catch (DecoderException e) {
+                /**  抛出 DecoderException 异常 **/
                 throw e;
             } catch (Exception e) {
+                /** 封装成 DecoderException 异常，抛出 **/
                 throw new DecoderException(e);
             } finally {
+                /**  cumulation 中所有数据被读取完，直接释放全部  **/
                 if (cumulation != null && !cumulation.isReadable()) {
+                    /**   重置 numReads 次数 **/
                     numReads = 0;
+                    /**   释放 cumulation  **/
                     cumulation.release();
+                    /**   置空 cumulation  **/
                     cumulation = null;
-                } else if (++ numReads >= discardAfterReads) {
-                    // We did enough reads already try to discard some bytes so we not risk to see a OOME.
-                    // See https://github.com/netty/netty/issues/4275
+                }
+                /**  读取次数到达 discardAfterReads 上限，释放部分的已读 **/
+                else if (++ numReads >= discardAfterReads) {
+                    /** 重置 numReads 次数 **/
                     numReads = 0;
+                    /** 释放部分的已读 **/
                     discardSomeReadBytes();
                 }
 
@@ -527,23 +471,117 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         }
     }
 
+
+
+    /**
+     * ByteBuf 累积器接口
+     */
+    public interface Cumulator {
+        /**
+         * 将原有 cumulation 累加上新的 in ，返回“新”的 ByteBuf 对象，
+         * 如果 in 过大，超过 cumulation 的空间上限，使用 alloc 进行扩容后再累加。
+         *
+         * @param alloc ByteBuf 分配器
+         * @param cumulation ByteBuf 当前累积结果
+         * @param in 当前读取( 输入 ) ByteBuf
+         * @return ByteBuf 新的累积结果
+         */
+        ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in);
+    }
+
+    /**
+     * 不断使用老的 ByteBuf 累积。如果空间不够，扩容出新的 ByteBuf ，再继续进行累积
+     */
+    public static final Cumulator MERGE_CUMULATOR = new Cumulator() {
+        @Override
+        public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
+            try {
+                final ByteBuf buffer;
+                /** 判断是否进行扩容 三个条件，满足任意，需要进行扩容 **/
+                /** 1 cumulation.writerIndex() > cumulation.maxCapacity() - in.readableBytes() ，
+                 *  cumulation 可写如的容量小于in能否读取容量，需要扩容 **/
+                /** 2 cumulation.refCnt() > 1 ，引用大于 1 ，说明用户使用了 ByteBuf#slice()#retain() 或 ByteBuf#duplicate()#retain() 方法，
+                 * 使 refCnt 增加并且大于 1 。 **/
+                /** 3 cumulation.isReadOnly() 只读，不可累加，所以需要改成可写 **/
+                if (cumulation.writerIndex() > cumulation.maxCapacity() - in.readableBytes()
+                        || cumulation.refCnt() > 1 || cumulation.isReadOnly()) {
+                    /** 扩容，并返回新的，并赋值给 buffer **/
+                    buffer = expandCumulation(alloc, cumulation, in.readableBytes());
+                }
+                /** 无需扩容 buffer 直接使用的 cumulation 对象 **/
+                else {
+                    buffer = cumulation;
+                }
+                /** 将in写入buffer **/
+                buffer.writeBytes(in);
+                return buffer;
+            } finally {
+                /** 释放 in **/
+                in.release();
+            }
+        }
+    };
+
+    /**
+     * 扩容
+     */
     static ByteBuf expandCumulation(ByteBufAllocator alloc, ByteBuf cumulation, int readable) {
+        /**  记录老的 ByteBuf 对象 **/
         ByteBuf oldCumulation = cumulation;
+        /**  分配新的 ByteBuf 对象 **/
         cumulation = alloc.buffer(oldCumulation.readableBytes() + readable);
+        /**  将老的数据，写入到新的 ByteBuf 对象 **/
         cumulation.writeBytes(oldCumulation);
+        /**  释放老的 ByteBuf 对象 **/
         oldCumulation.release();
+        /**  返回新的 ByteBuf 对象 **/
         return cumulation;
     }
 
     /**
-     * Cumulate {@link ByteBuf}s.
+     * 使用 CompositeByteBuf ，组合新输入的 ByteBuf 对象，从而避免内存拷贝
+     * 相比 MERGE_CUMULATOR 来说：
+     * 好处是，内存零拷贝
+     * 坏处是，因为维护复杂索引，所以某些使用场景下，慢于 MERGE_CUMULATOR
      */
-    public interface Cumulator {
-        /**
-         * Cumulate the given {@link ByteBuf}s and return the {@link ByteBuf} that holds the cumulated bytes.
-         * The implementation is responsible to correctly handle the life-cycle of the given {@link ByteBuf}s and so
-         * call {@link ByteBuf#release()} if a {@link ByteBuf} is fully consumed.
-         */
-        ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in);
-    }
+    public static final Cumulator COMPOSITE_CUMULATOR = new Cumulator() {
+        @Override
+        public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
+            ByteBuf buffer;
+            try {
+                /** 判断是否进行扩容  **/
+
+                /** cumulation.refCnt() > 1 ，引用大于 1 ，说明用户使用了 ByteBuf#slice()#retain() 或 ByteBuf#duplicate()#retain() 方法，
+                 * 使 refCnt 增加并且大于 1 。 **/
+                if (cumulation.refCnt() > 1) {
+                    /** 扩容，并返回新的，并赋值给 buffer **/
+                    buffer = expandCumulation(alloc, cumulation, in.readableBytes());
+                    buffer.writeBytes(in);
+                } else {
+                    CompositeByteBuf composite;
+                    /** 判断cumulation类型是否是CompositeByteBuf，如果是直接使用 **/
+                    if (cumulation instanceof CompositeByteBuf) {
+                        composite = (CompositeByteBuf) cumulation;
+                    }
+                    /** 不是 CompositeByteBuf 类型，创建，并添加到其中 **/
+                    else {
+                        composite = alloc.compositeBuffer(Integer.MAX_VALUE);
+                        composite.addComponent(true, cumulation);
+                    }
+                    /**  添加 in 到 composite 中  **/
+                    composite.addComponent(true, in);
+                    in = null;
+                    /** 赋值给 buffer **/
+                    buffer = composite;
+                }
+                /** 返回 buffer **/
+                return buffer;
+            } finally {
+                /** 释放 in **/
+                if (in != null) {
+                    in.release();
+                }
+            }
+        }
+    };
 }

@@ -39,7 +39,6 @@ final class CodecOutputList extends AbstractList<Object> implements RandomAccess
             new FastThreadLocal<CodecOutputLists>() {
                 @Override
                 protected CodecOutputLists initialValue() throws Exception {
-                    // 16 CodecOutputList per Thread are cached.
                     return new CodecOutputLists(16);
                 }
             };
