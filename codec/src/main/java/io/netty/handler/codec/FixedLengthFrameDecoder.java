@@ -23,15 +23,18 @@ import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 
 /**
- * A decoder that splits the received {@link ByteBuf}s by the fixed number
- * of bytes. For example, if you received the following four fragmented packets:
+ * 基于固定长度消息进行粘包拆包处理的。
+ *
+ * 如果下是固定长度为 3 的数据流解码：
+ *
+ * 原始数据包
  * <pre>
  * +---+----+------+----+
  * | A | BC | DEFG | HI |
  * +---+----+------+----+
  * </pre>
- * A {@link FixedLengthFrameDecoder}{@code (3)} will decode them into the
- * following three packets with the fixed length:
+ *
+ * 解码后
  * <pre>
  * +-----+-----+-----+
  * | ABC | DEF | GHI |
@@ -40,18 +43,26 @@ import java.util.List;
  */
 public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
 
+
+    /**
+     * 固定长度大小
+     */
     private final int frameLength;
 
     /**
-     * Creates a new instance.
-     *
-     * @param frameLength the length of the frame
+     * 实例化FixedLengthFrameDecoder，设置固定长度大小
      */
     public FixedLengthFrameDecoder(int frameLength) {
+        /** 检查frameLength 长度不能不小等于0 **/
         checkPositive(frameLength, "frameLength");
+        /** 设置frameLength **/
         this.frameLength = frameLength;
     }
 
+
+    /**
+     * 实现父类ByteToMessageDecoder 模板方法，对字节流基于固定长度解码，并将解码的消息放入out列表中
+     */
     @Override
     protected final void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
         Object decoded = decode(ctx, in);
@@ -61,18 +72,16 @@ public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
     }
 
     /**
-     * Create a frame out of the {@link ByteBuf} and return it.
-     *
-     * @param   ctx             the {@link ChannelHandlerContext} which this {@link ByteToMessageDecoder} belongs to
-     * @param   in              the {@link ByteBuf} from which to read data
-     * @return  frame           the {@link ByteBuf} which represent the frame or {@code null} if no frame could
-     *                          be created.
+     * 执行解码
      */
     protected Object decode(
             @SuppressWarnings("UnusedParameters") ChannelHandlerContext ctx, ByteBuf in) throws Exception {
+        /** 可读字节不够 frameLength 长度，无法解码出消息。 **/
         if (in.readableBytes() < frameLength) {
             return null;
-        } else {
+        }
+        /** 可读字节足够 frameLength 长度，解码出一条消息。**/
+        else {
             return in.readRetainedSlice(frameLength);
         }
     }
