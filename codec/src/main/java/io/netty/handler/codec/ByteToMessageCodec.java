@@ -24,18 +24,23 @@ import io.netty.util.internal.TypeParameterMatcher;
 import java.util.List;
 
 /**
- * A Codec for on-the-fly encoding/decoding of bytes to messages and vise-versa.
- *
- * This can be thought of as a combination of {@link ByteToMessageDecoder} and {@link MessageToByteEncoder}.
- *
- * Be aware that sub-classes of {@link ByteToMessageCodec} <strong>MUST NOT</strong>
- * annotated with {@link @Sharable}.
+ * 继承 ChannelDuplexHandler 类，通过组合 MessageToByteEncoder 和 ByteToMessageDecoder 的功能，从而实现编解码的 Codec 抽象类
  */
 public abstract class ByteToMessageCodec<I> extends ChannelDuplexHandler {
 
+    /**
+     * 类型匹配器
+     */
     private final TypeParameterMatcher outboundMsgMatcher;
+
+    /**
+     * Encoder 对象
+     */
     private final MessageToByteEncoder<I> encoder;
 
+    /**
+     * Decoder 对象
+     */
     private final ByteToMessageDecoder decoder = new ByteToMessageDecoder() {
         @Override
         public void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
@@ -49,25 +54,21 @@ public abstract class ByteToMessageCodec<I> extends ChannelDuplexHandler {
     };
 
     /**
-     * see {@link #ByteToMessageCodec(boolean)} with {@code true} as boolean parameter.
+     * 实例化ByteToMessageCodec
      */
     protected ByteToMessageCodec() {
         this(true);
     }
 
     /**
-     * see {@link #ByteToMessageCodec(Class, boolean)} with {@code true} as boolean value.
+     * 实例化ByteToMessageCodec
      */
     protected ByteToMessageCodec(Class<? extends I> outboundMessageType) {
         this(outboundMessageType, true);
     }
 
     /**
-     * Create a new instance which will try to detect the types to match out of the type parameter of the class.
-     *
-     * @param preferDirect          {@code true} if a direct {@link ByteBuf} should be tried to be used as target for
-     *                              the encoded messages. If {@code false} is used it will allocate a heap
-     *                              {@link ByteBuf}, which is backed by an byte array.
+     * 实例化ByteToMessageCodec
      */
     protected ByteToMessageCodec(boolean preferDirect) {
         ensureNotSharable();
@@ -76,12 +77,7 @@ public abstract class ByteToMessageCodec<I> extends ChannelDuplexHandler {
     }
 
     /**
-     * Create a new instance
-     *
-     * @param outboundMessageType   The type of messages to match
-     * @param preferDirect          {@code true} if a direct {@link ByteBuf} should be tried to be used as target for
-     *                              the encoded messages. If {@code false} is used it will allocate a heap
-     *                              {@link ByteBuf}, which is backed by an byte array.
+     * 实例化ByteToMessageCodec
      */
     protected ByteToMessageCodec(Class<? extends I> outboundMessageType, boolean preferDirect) {
         ensureNotSharable();
@@ -90,9 +86,7 @@ public abstract class ByteToMessageCodec<I> extends ChannelDuplexHandler {
     }
 
     /**
-     * Returns {@code true} if and only if the specified message can be encoded by this codec.
-     *
-     * @param msg the message
+     * 消息类型是否匹配
      */
     public boolean acceptOutboundMessage(Object msg) throws Exception {
         return outboundMsgMatcher.match(msg);
@@ -137,17 +131,17 @@ public abstract class ByteToMessageCodec<I> extends ChannelDuplexHandler {
     }
 
     /**
-     * @see MessageToByteEncoder#encode(ChannelHandlerContext, Object, ByteBuf)
+     * 编码模板方法
      */
     protected abstract void encode(ChannelHandlerContext ctx, I msg, ByteBuf out) throws Exception;
 
     /**
-     * @see ByteToMessageDecoder#decode(ChannelHandlerContext, ByteBuf, List)
+     * 解码模板方法
      */
     protected abstract void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception;
 
     /**
-     * @see ByteToMessageDecoder#decodeLast(ChannelHandlerContext, ByteBuf, List)
+     * 最后一次解码模板方法
      */
     protected void decodeLast(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
         if (in.isReadable()) {
