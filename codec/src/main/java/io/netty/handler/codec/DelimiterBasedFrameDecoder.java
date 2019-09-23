@@ -213,19 +213,19 @@ public class DelimiterBasedFrameDecoder extends ByteToMessageDecoder {
             int frameLength = indexOf(buffer, delim);
             /** 如果匹配到分隔符 **/
             if (frameLength >= 0 && frameLength < minFrameLength) {
-                /** 记录分隔符到变量 minFrameLength **/
+                /** 记录分隔符的起始位置 **/
                 minFrameLength = frameLength;
                 /** 记录分隔符到变量 minDelim **/
                 minDelim = delim;
             }
         }
 
-        /** 匹配 **/
+        /** 匹配到分隔符 **/
         if (minDelim != null) {
             int minDelimLength = minDelim.capacity();
             ByteBuf frame;
 
-            /** 判断是否进入丢弃模式 **/
+            /** 如果进入丢弃模式 **/
             if (discardingTooLongFrame) {
                 /** 设置不在进入丢弃模式 **/
                 discardingTooLongFrame = false;
@@ -243,41 +243,55 @@ public class DelimiterBasedFrameDecoder extends ByteToMessageDecoder {
                 return null;
             }
 
+            /** 分隔符的起始位置超过最大长度 **/
             if (minFrameLength > maxFrameLength) {
-                // Discard read frame.
+                /** buffer 跳过（丢弃）minFrameLength+ minDelimLength 个字节**/
                 buffer.skipBytes(minFrameLength + minDelimLength);
+                /** 超过包最大长度，失败，抛出异常 **/
                 fail(minFrameLength);
                 return null;
             }
-
+            /** 根据是否去除分隔符解码buffer frame**/
             if (stripDelimiter) {
                 frame = buffer.readRetainedSlice(minFrameLength);
                 buffer.skipBytes(minDelimLength);
             } else {
                 frame = buffer.readRetainedSlice(minFrameLength + minDelimLength);
             }
-
+            /** 返回buffer frame **/
             return frame;
-        } else {
+        }
+        /** 未匹配到分隔符 **/
+        else {
+            /** 如果未进入丢弃模式 **/
             if (!discardingTooLongFrame) {
+                /** 如果buffer中可读取字节数大于最大包长度，即包长度超过最大包长度 **/
                 if (buffer.readableBytes() > maxFrameLength) {
-                    // Discard the content of the buffer until a delimiter is found.
+                    /** 丢弃buffer中数据 **/
                     tooLongFrameLength = buffer.readableBytes();
                     buffer.skipBytes(buffer.readableBytes());
+                    /** 进入丢弃模式 **/
                     discardingTooLongFrame = true;
+                    /** 如果设置快速失败为tue,抛出异常 **/
                     if (failFast) {
                         fail(tooLongFrameLength);
                     }
                 }
-            } else {
-                // Still discarding the buffer since a delimiter is not found.
+            }
+            /** 如果进入丢弃模式 **/
+            else {
+                /** 丢弃buffer中数据 **/
                 tooLongFrameLength += buffer.readableBytes();
                 buffer.skipBytes(buffer.readableBytes());
             }
+            /** 返回null **/
             return null;
         }
     }
 
+    /**
+     * 超过包最大长度，失败，抛出异常
+     */
     private void fail(long frameLength) {
         if (frameLength > 0) {
             throw new TooLongFrameException(
