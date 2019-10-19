@@ -29,7 +29,7 @@ import io.netty.util.internal.TypeParameterMatcher;
 import java.util.List;
 
 /**
- * {@link ChannelOutboundHandlerAdapter} which encodes from one message to an other message
+ * 将消息编码成另一种消息
  *
  * For example here is an implementation which decodes an {@link Integer} to an {@link String}.
  *
@@ -54,24 +54,21 @@ public abstract class MessageToMessageEncoder<I> extends ChannelOutboundHandlerA
     private final TypeParameterMatcher matcher;
 
     /**
-     * Create a new instance which will try to detect the types to match out of the type parameter of the class.
+     * 实例化MessageToMessageEncoder
      */
     protected MessageToMessageEncoder() {
         matcher = TypeParameterMatcher.find(this, MessageToMessageEncoder.class, "I");
     }
 
     /**
-     * Create a new instance
-     *
-     * @param outboundMessageType   The type of messages to match and so encode
+     * 实例化MessageToMessageEncoder
      */
     protected MessageToMessageEncoder(Class<? extends I> outboundMessageType) {
         matcher = TypeParameterMatcher.get(outboundMessageType);
     }
 
     /**
-     * Returns {@code true} if the given message should be handled. If {@code false} it will be passed to the next
-     * {@link ChannelOutboundHandler} in the {@link ChannelPipeline}.
+     * 实例化MessageToMessageEncoder
      */
     public boolean acceptOutboundMessage(Object msg) throws Exception {
         return matcher.match(msg);
@@ -81,16 +78,21 @@ public abstract class MessageToMessageEncoder<I> extends ChannelOutboundHandlerA
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         CodecOutputList out = null;
         try {
+            /**  判断是否为匹配的消息 **/
             if (acceptOutboundMessage(msg)) {
+                /**  创建 CodecOutputList 对象 **/
                 out = CodecOutputList.newInstance();
                 @SuppressWarnings("unchecked")
                 I cast = (I) msg;
                 try {
+                    /** 调用模板方法实现编码，子类实现 **/
                     encode(ctx, cast, out);
                 } finally {
+                    /** 释放cast **/
                     ReferenceCountUtil.release(cast);
                 }
 
+                /** 如果未编码出消息，回收out,抛出异常 **/
                 if (out.isEmpty()) {
                     out.recycle();
                     out = null;

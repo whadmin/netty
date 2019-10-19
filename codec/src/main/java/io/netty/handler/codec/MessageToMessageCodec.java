@@ -24,12 +24,12 @@ import io.netty.util.internal.TypeParameterMatcher;
 import java.util.List;
 
 /**
- * A Codec for on-the-fly encoding/decoding of message.
+ * MessageToMessageCodec 负责消息和消息之间的编解码
  *
- * This can be thought of as a combination of {@link MessageToMessageDecoder} and {@link MessageToMessageEncoder}.
+ * MessageToMessageCodec 负责消息和消息之间的编解码，主要由两部分构造：
  *
- * Here is an example of a {@link MessageToMessageCodec} which just decode from {@link Integer} to {@link Long}
- * and encode from {@link Long} to {@link Integer}.
+ * MessageToMessageEncoder ，将消息编码成另一种消息。
+ * MessageToMessageDecoder ，将消息解码成另一种消息。
  *
  * <pre>
  *     public class NumberCodec extends
